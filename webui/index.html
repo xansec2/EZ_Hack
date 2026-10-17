@@ -1,0 +1,1268 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}}</title>
+<!--
+  Browser view of the pentest command builder. The Go binary serves this page
+  with --web, filling in the TITLE and CONFIG placeholders (title, the whole
+  tool catalog, and the saved projects as JSON). Pick a tool on the left, fill
+  its flags on the right, then copy or run the assembled command — output
+  streams from POST /api/run. Running is gated server-side by the active
+  project's out-of-scope list, exactly like the TUI's ctrl+r.
+-->
+<style>
+  :root {
+    --bg: #f6f9f9;
+    --panel: #ffffff;
+    --border: #d7e3e2;
+    --hover: #eef5f4;
+    --sel: #e0f5f2;
+    --fg: #1f2933;
+    --fg-strong: #0f1a1c;
+    --dim: #66737a;
+    --accent: #0d9488;
+    --accent-soft: #0f766e;
+    --banner: #0d9488;
+    --code-bg: #f0f5f5;
+    --code-fg: #10201e;
+    --ok: #15803d;
+    --warn: #b45309;
+    --danger: #b91c1c;
+    --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #101518;
+      --panel: #151b1e;
+      --border: #263136;
+      --hover: #1b2327;
+      --sel: rgba(45, 212, 191, 0.12);
+      --fg: #d4d9db;
+      --fg-strong: #f1f5f5;
+      --dim: #87949a;
+      --accent: #2dd4bf;
+      --accent-soft: #99f6e4;
+      --banner: #0d9488;
+      --code-bg: #1a2124;
+      --code-fg: #f0fdfa;
+      --ok: #86efac;
+      --warn: #ffcb6b;
+      --danger: #fca5a5;
+      color-scheme: dark;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+    color: var(--fg);
+    font: 15px/1.6 var(--sans);
+  }
+
+  /* ── banner ─────────────────────────────────────────────────────────── */
+  .banner {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 8px 16px;
+    background: var(--banner);
+    color: #fff;
+  }
+  .brand { font-weight: 700; letter-spacing: 0.02em; }
+  /* mode toggle (top-left): click to switch catalogs */
+  .modes { display: flex; gap: 6px; align-items: center; }
+  .modetab {
+    padding: 4px 14px;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 999px;
+    background: transparent;
+    color: #fff;
+    font: 700 13px/1.2 var(--sans);
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    opacity: 0.8;
+  }
+  .modetab:hover { opacity: 1; background: rgba(255, 255, 255, 0.12); }
+  .modetab.active { background: #fff; color: var(--banner); border-color: #fff; opacity: 1; }
+  .keys { font-size: 12.5px; opacity: 0.9; }
+  kbd {
+    font: 11.5px var(--mono);
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.18);
+  }
+
+  /* ── layout ─────────────────────────────────────────────────────────── */
+  .layout {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(260px, 340px) 1fr;
+  }
+
+  .sidebar {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+  }
+  .search { padding: 12px; border-bottom: 1px solid var(--border); }
+  #filter {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg);
+    color: var(--fg);
+    font: inherit;
+  }
+  #filter:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+  #list { flex: 1; overflow: auto; padding: 0 0 12px; }
+  .cat {
+    position: sticky;
+    top: 0;
+    padding: 12px 16px 4px;
+    background: var(--panel);
+    color: var(--accent-soft);
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 6px 16px 6px 13px;
+    border: 0;
+    border-left: 3px solid transparent;
+    background: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+  .item:hover { background: var(--hover); }
+  .item.sel { background: var(--sel); border-left-color: var(--accent); }
+  .item .name { display: block; font: 13.5px/1.45 var(--mono); color: var(--fg-strong); }
+  .item.sel .name { color: var(--accent); }
+  .item .sum {
+    display: block;
+    overflow: hidden;
+    color: var(--dim);
+    font-size: 12.5px;
+    line-height: 1.4;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .empty { padding: 16px; color: var(--dim); }
+  .count { padding: 8px 16px; border-top: 1px solid var(--border); color: var(--dim); font-size: 12px; }
+
+  /* ── detail ─────────────────────────────────────────────────────────── */
+  #detail { min-height: 0; overflow: auto; outline: none; display: flex; flex-direction: column; }
+  article { flex: 1; max-width: 920px; width: 100%; padding: 20px 32px 40px; }
+
+  /* project bar */
+  .projbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 10px 32px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    font-size: 13px;
+  }
+  .projbar label { color: var(--dim); }
+  .projbar select {
+    padding: 5px 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg);
+    color: var(--fg);
+    font: inherit;
+  }
+  .projbar .scope { color: var(--dim); font-size: 12.5px; }
+  .projbar .refresh {
+    margin-left: auto;
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--panel);
+    color: var(--dim);
+    font: 12px var(--sans);
+    cursor: pointer;
+  }
+  .projbar .refresh:hover { color: var(--accent); border-color: var(--accent); }
+
+  .crumb { color: var(--accent-soft); font-size: 12px; font-style: italic; letter-spacing: 0.08em; text-transform: uppercase; }
+  h1 { margin: 2px 0 4px; color: var(--accent); font: 600 24px/1.3 var(--mono); }
+  .summary { margin: 0 0 4px; color: var(--dim); }
+  h2 {
+    margin: 24px 0 8px;
+    color: var(--accent-soft);
+    font-size: 12.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  /* flag form */
+  .flags { display: flex; flex-direction: column; gap: 2px; }
+  .flag {
+    display: grid;
+    grid-template-columns: minmax(0, 260px) 1fr;
+    gap: 12px;
+    align-items: start;
+    padding: 8px 10px;
+    border-radius: 7px;
+  }
+  .flag:hover { background: var(--hover); }
+  .flag .label { font: 13px/1.5 var(--mono); color: var(--fg-strong); overflow-wrap: anywhere; }
+  .flag .label .fl { color: var(--accent-soft); }
+  .flag .req { color: var(--danger); }
+  .flag .fdesc { margin: 2px 0 0; color: var(--dim); font-size: 12px; font-family: var(--sans); }
+  .flag .control input[type=text],
+  .flag .control select {
+    width: 100%;
+    padding: 6px 9px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg);
+    color: var(--fg);
+    font: 13px var(--mono);
+  }
+  .flag .control input[type=text].missing { border-color: var(--danger); }
+  .flag .control input:focus, .flag .control select:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+  .flag .control label.sw { display: inline-flex; align-items: center; gap: 8px; color: var(--dim); font-size: 13px; cursor: pointer; }
+  .noflags { color: var(--dim); font-style: italic; }
+
+  /* command box */
+  .cmdwrap { position: sticky; bottom: 0; }
+  .cmd {
+    position: relative;
+    margin: 0;
+    padding: 14px 16px;
+    overflow-x: auto;
+    background: var(--code-bg);
+    color: var(--code-fg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font: 13.5px/1.55 var(--mono);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .missmsg { margin: 6px 0 0; color: var(--danger); font-size: 12.5px; }
+  .actions { display: flex; gap: 8px; margin-top: 10px; align-items: center; flex-wrap: wrap; }
+  button.act {
+    padding: 7px 14px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: var(--panel);
+    color: var(--fg);
+    font: 13px var(--sans);
+    cursor: pointer;
+  }
+  button.act:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  button.act.run { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.act.run:hover:not(:disabled) { color: #fff; opacity: 0.92; }
+  button.act.stop { background: var(--danger); border-color: var(--danger); color: #fff; }
+  button.act:disabled { opacity: 0.5; cursor: not-allowed; }
+  .actmsg { font-size: 12.5px; color: var(--dim); }
+  .actmsg.warn { color: var(--warn); }
+
+  /* output console */
+  h2.outhead { display: flex; align-items: center; gap: 10px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); }
+  .dot.live { background: var(--ok); box-shadow: 0 0 0 0 rgba(21,128,61,0.5); animation: pulse 1.2s infinite; }
+  @keyframes pulse { to { box-shadow: 0 0 0 6px rgba(21,128,61,0); } }
+  #console {
+    margin: 0;
+    padding: 12px 14px;
+    min-height: 120px;
+    max-height: 42vh;
+    overflow: auto;
+    background: #0b1013;
+    color: #d7e3e2;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font: 12.5px/1.5 var(--mono);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  #console .cmdline { color: #5eead4; }
+  #console .err { color: #fca5a5; }
+  #console .done { color: #86efac; }
+  #console .hint { color: #66737a; font-style: italic; }
+
+  /* project controls + modal */
+  .projbar .pbtn {
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--panel);
+    color: var(--dim);
+    font: 12px var(--sans);
+    cursor: pointer;
+  }
+  .projbar .pbtn:hover { color: var(--accent); border-color: var(--accent); }
+  .projbar .pbtn.danger:hover { color: var(--danger); border-color: var(--danger); }
+  .projbar .pbtn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .projbar .pbtn:disabled:hover { color: var(--dim); border-color: var(--border); }
+  .projbar .spacer { margin-left: auto; }
+
+  .modal {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: rgba(8, 14, 16, 0.55);
+    z-index: 50;
+  }
+  .modal[hidden] { display: none; }
+  .dialog {
+    width: 100%;
+    max-width: 460px;
+    max-height: 85vh;
+    overflow: auto;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 22px;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+  }
+  .dialog h3 { margin: 0 0 14px; color: var(--accent); font: 600 17px/1.3 var(--sans); }
+  .dialog h4 {
+    margin: 16px 0 6px;
+    color: var(--accent-soft);
+    font-size: 11.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .dialog .row { display: flex; gap: 8px; }
+  .dialog input[type=text] {
+    flex: 1;
+    width: 100%;
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg);
+    color: var(--fg);
+    font: 13px var(--mono);
+  }
+  .dialog input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+  .scopelist { list-style: none; margin: 6px 0 0; padding: 0; }
+  .scopelist li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    font: 13px var(--mono);
+    color: var(--fg);
+  }
+  .scopelist li .x {
+    margin-left: auto;
+    border: 0;
+    background: none;
+    color: var(--dim);
+    font-size: 15px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .scopelist li .x:hover { color: var(--danger); }
+  .scopelist .none { color: var(--dim); font-style: italic; font-family: var(--sans); font-size: 12.5px; }
+  .dialog .foot { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
+  .dialog .err { margin: 8px 0 0; color: var(--danger); font-size: 12.5px; }
+
+  #toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    padding: 8px 16px;
+    border-radius: 999px;
+    background: var(--banner);
+    color: #fff;
+    font-size: 13px;
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(-50%, 12px);
+    transition: opacity 0.15s, transform 0.15s;
+  }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  @media (max-width: 760px) {
+    .keys { display: none; }
+    .layout { grid-template-columns: 1fr; grid-template-rows: 34vh 1fr; }
+    .sidebar { border-right: 0; border-bottom: 1px solid var(--border); }
+    .projbar, article { padding-left: 16px; padding-right: 16px; }
+    .flag { grid-template-columns: 1fr; gap: 4px; }
+  }
+</style>
+</head>
+<body>
+<header class="banner">
+  <div class="modes" id="modes" role="tablist" aria-label="Catalog"></div>
+  <span class="keys"><kbd>/</kbd> filter · <kbd>j</kbd>/<kbd>k</kbd> move · <kbd>y</kbd> copy · <kbd>enter</kbd> run</span>
+</header>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="search">
+      <input id="filter" type="search" placeholder="Filter… (press /)" autocomplete="off" spellcheck="false" aria-label="Filter tools">
+    </div>
+    <nav id="list" aria-label="Tools"></nav>
+    <div id="count" class="count"></div>
+  </aside>
+  <main id="detail" tabindex="-1"></main>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
+<div id="modal" class="modal" hidden><div class="dialog" id="dialog" role="dialog" aria-modal="true"></div></div>
+
+<script id="config" type="application/json">{{CONFIG}}</script>
+<script>
+// The server fills in the config block above. Opened straight from disk it
+// still holds the placeholder, so fall back to an empty catalog and explain.
+let CONFIG;
+try {
+  CONFIG = JSON.parse(document.getElementById("config").textContent);
+} catch {
+  CONFIG = { title: document.title, modes: [] };
+}
+const SERVED = location.protocol.startsWith("http"); // false when opened from disk
+
+// Flag kinds — must match the FlagKind iota in tool.go.
+const BOOL = 0, STRING = 1, INT = 2, CHOICE = 3;
+
+const listEl = document.getElementById("list");
+const detailEl = document.getElementById("detail");
+const filterEl = document.getElementById("filter");
+const countEl = document.getElementById("count");
+const toastEl = document.getElementById("toast");
+const modalEl = document.getElementById("modal");
+const dialogEl = document.getElementById("dialog");
+const modesEl = document.getElementById("modes");
+
+// One self-contained context per mode (web / AD): its catalog (with a slug and
+// filter haystack per tool), a slug index, and the UI state remembered across
+// switches. Every tool gets a stable, URL-safe slug for #links.
+const MODES = (CONFIG.modes && CONFIG.modes.length
+  ? CONFIG.modes
+  : [{ key: "web", label: "web", catalog: [], projects: [] }]
+).map((md) => {
+  const cat = md.catalog || [];
+  const bs = new Map();
+  cat.forEach((t, i) => {
+    t._i = i;
+    const base = (t.Name || "tool").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "tool";
+    let slug = base;
+    for (let n = 2; bs.has(slug); n++) slug = base + "-" + n;
+    t.slug = slug;
+    t.hay = ((t.Name || "") + " " + (t.Category || "") + " " + (t.Desc || "")).toLowerCase();
+    bs.set(slug, t);
+  });
+  return {
+    key: md.key, label: md.label, catalog: cat, projects: md.projects || [],
+    bySlug: bs, activeProject: "", currentSlug: null, filter: "",
+  };
+});
+const MODE_BY_KEY = new Map(MODES.map((m) => [m.key, m]));
+
+// The active mode and live aliases into it. activateMode() snapshots these back
+// into the outgoing mode and reloads them from the incoming one, so each mode
+// keeps its own selection, filter, project list, and active project.
+let mode = MODES[0];
+let CATALOG = mode.catalog;
+let PROJECTS = mode.projects;
+let bySlug = mode.bySlug;
+let activeProject = mode.activeProject;
+let shown = CATALOG; // tools passing the filter, in catalog order
+let current = null;  // selected tool (catalog entry)
+let work = [];       // per-flag working state: {value, enabled} parallel to current.Flags
+let runCtl = null;   // AbortController for the in-flight run, or null
+
+function esc(s) {
+  return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+}
+
+function toast(msg) {
+  toastEl.textContent = msg;
+  toastEl.classList.add("show");
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => toastEl.classList.remove("show"), 1400);
+}
+
+// ── command assembly (mirrors Tool.Command / shellQuote in tool.go) ───────
+function isPlaceholder(flag) {
+  return flag && flag.length >= 2 && flag[0] === "{" && flag[flag.length - 1] === "}";
+}
+const SAFE = /^[A-Za-z0-9\-_.\/:=@%+,]+$/;
+function shellQuote(s) {
+  if (s === "") return "''";
+  if (SAFE.test(s)) return s;
+  return "'" + s.replace(/'/g, "'\\''") + "'";
+}
+// buildCommand assembles the command string from current + work, exactly as
+// the Go side does, for the live preview and the Copy button.
+function buildCommand() {
+  if (!current) return "";
+  const flags = current.Flags || [];
+  let base = current.Binary || "";
+  flags.forEach((f, i) => {
+    if (isPlaceholder(f.Flag)) {
+      const v = (work[i].value || "").trim();
+      if (v) base = base.split(f.Flag).join(v);
+    }
+  });
+  const parts = [base];
+  const positionals = [];
+  flags.forEach((f, i) => {
+    if (isPlaceholder(f.Flag)) return;
+    if (f.Kind === BOOL) {
+      if (work[i].enabled) parts.push(f.Flag);
+      return;
+    }
+    const v = (work[i].value || "").trim();
+    if (!v) return;
+    if (f.Positional) positionals.push(shellQuote(v));
+    else parts.push(f.Flag, shellQuote(v));
+  });
+  return parts.concat(positionals).join(" ");
+}
+
+// missingRequired mirrors Tool.MissingRequired: names of required flags with no
+// value (or a required bool that's off).
+function missingRequired() {
+  if (!current) return [];
+  const miss = [];
+  (current.Flags || []).forEach((f, i) => {
+    if (!f.Required) return;
+    if (f.Kind === BOOL) {
+      if (!work[i].enabled) miss.push(f.Name);
+    } else if (!(work[i].value || "").trim()) {
+      miss.push(f.Name);
+    }
+  });
+  return miss;
+}
+
+// outOfScopeHit mirrors the server's check, for an instant client-side warning
+// (the server re-checks authoritatively before running).
+function outOfScopeHit(cmd) {
+  const p = PROJECTS.find((p) => p.name === activeProject);
+  if (!p || !p.out_of_scope) return "";
+  for (const o of p.out_of_scope) {
+    const t = (o || "").trim();
+    if (t && cmd.includes(t)) return o;
+  }
+  return "";
+}
+
+function activeInScope() {
+  const p = PROJECTS.find((p) => p.name === activeProject);
+  return (p && p.in_scope) || [];
+}
+
+// primaryTargetIdx mirrors model.primaryTargetIdx: the flag most likely to hold
+// the target URL/host, used to prefill from the active project's scope.
+function primaryTargetIdx(flags) {
+  for (let i = 0; i < flags.length; i++) if (flags[i].Positional && flags[i].Required) return i;
+  const targets = new Set(["-u", "-d", "-h", "-host", "-l", "--targets", "-f"]);
+  for (let i = 0; i < flags.length; i++) if (targets.has(flags[i].Flag)) return i;
+  return -1;
+}
+
+// ── sidebar list ──────────────────────────────────────────────────────────
+function applyFilter() {
+  const terms = filterEl.value.toLowerCase().split(/\s+/).filter(Boolean);
+  shown = terms.length ? CATALOG.filter((t) => terms.every((x) => t.hay.includes(x))) : CATALOG;
+  renderList();
+  if (shown.length && !shown.includes(current)) select(shown[0]);
+  else if (current) markSelected(current);
+}
+
+function renderList() {
+  listEl.replaceChildren();
+  let cat = null;
+  for (const t of shown) {
+    if (t.Category !== cat) {
+      cat = t.Category;
+      const h = document.createElement("div");
+      h.className = "cat";
+      h.textContent = cat || "other";
+      listEl.append(h);
+    }
+    const a = document.createElement("button");
+    a.type = "button";
+    a.className = "item";
+    a.dataset.slug = t.slug;
+    a.addEventListener("click", () => select(t));
+    const name = document.createElement("span");
+    name.className = "name";
+    name.textContent = t.Name;
+    const sum = document.createElement("span");
+    sum.className = "sum";
+    sum.textContent = t.Desc || "";
+    a.append(name, sum);
+    listEl.append(a);
+  }
+  if (!shown.length) {
+    const p = document.createElement("p");
+    p.className = "empty";
+    p.textContent = "No matches.";
+    listEl.append(p);
+  }
+  countEl.textContent = shown.length === CATALOG.length
+    ? CATALOG.length + " tools"
+    : shown.length + " of " + CATALOG.length + " tools";
+}
+
+function markSelected(t) {
+  for (const el of listEl.querySelectorAll(".item.sel")) el.classList.remove("sel");
+  const item = listEl.querySelector('[data-slug="' + t.slug + '"]');
+  if (item) {
+    item.classList.add("sel");
+    item.scrollIntoView({ block: "nearest" });
+  }
+}
+
+function select(t) {
+  if (!t) return;
+  // Changing tool abandons any in-flight run's UI (the fetch is aborted).
+  stopRun();
+  current = t;
+  // Fresh working copy from the catalog defaults.
+  work = (t.Flags || []).map((f) => ({ value: f.Value || "", enabled: !!f.Enabled }));
+  // Prefill the primary target from the active project's first in-scope entry.
+  const inScope = activeInScope();
+  if (inScope.length) {
+    const idx = primaryTargetIdx(t.Flags || []);
+    if (idx >= 0 && !(work[idx].value || "").trim()) work[idx].value = inScope[0];
+  }
+  mode.currentSlug = t.slug;
+  markSelected(t);
+  renderDetail();
+  setHash();
+  document.title = t.Name + " · " + mode.label + " · " + CONFIG.title;
+}
+
+// setHash keeps the URL as #<mode>/<slug> so links carry the mode too.
+function setHash() {
+  const want = mode.key + "/" + (current ? current.slug : "");
+  if (location.hash.slice(1) !== want) history.replaceState(null, "", "#" + want);
+}
+
+function move(delta) {
+  if (!shown.length) return;
+  const i = shown.indexOf(current);
+  select(shown[i < 0 ? 0 : Math.max(0, Math.min(shown.length - 1, i + delta))]);
+}
+
+// ── mode toggle (web ↔ AD) ──────────────────────────────────────────────────
+function renderModeToggle() {
+  modesEl.replaceChildren();
+  for (const m of MODES) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "modetab" + (m === mode ? " active" : "");
+    b.textContent = m.label;
+    b.setAttribute("role", "tab");
+    b.setAttribute("aria-selected", m === mode ? "true" : "false");
+    b.addEventListener("click", () => activateMode(m.key));
+    modesEl.append(b);
+  }
+}
+
+// activateMode swaps the active catalog. It snapshots the outgoing mode's UI
+// state (so returning restores your place) and reloads the globals from the
+// incoming one, then rebuilds the list and detail.
+function activateMode(key) {
+  const m = MODE_BY_KEY.get(key);
+  if (!m) return;
+  if (m !== mode) {
+    mode.activeProject = activeProject;
+    mode.projects = PROJECTS;
+    mode.currentSlug = current ? current.slug : mode.currentSlug;
+    mode.filter = filterEl.value;
+    stopRun();
+    mode = m;
+    CATALOG = mode.catalog;
+    PROJECTS = mode.projects;
+    bySlug = mode.bySlug;
+    activeProject = mode.activeProject;
+    current = null;
+  }
+  renderModeToggle();
+  filterEl.value = mode.filter || "";
+  applyFilter(); // renders the list and selects the first match
+  const restore = mode.currentSlug && bySlug.get(mode.currentSlug);
+  if (restore) select(restore);
+  else setHash();
+}
+
+// ── detail / configurator ──────────────────────────────────────────────────
+function renderDetail() {
+  const t = current;
+  detailEl.replaceChildren();
+  if (!t) return;
+
+  // project bar (populated by renderProjBar so it can refresh after edits)
+  const bar = document.createElement("div");
+  bar.className = "projbar";
+  bar.id = "projbar";
+  detailEl.append(bar);
+  renderProjBar();
+
+  // article: title, flags, command, actions, console
+  const art = document.createElement("article");
+  art.innerHTML =
+    '<div class="crumb">' + esc(t.Category || "tool") + "</div>" +
+    "<h1>" + esc(t.Name) + "</h1>" +
+    '<p class="summary">' + esc(t.Desc || "") + "</p>" +
+    '<p class="summary" style="font-family:var(--mono);font-size:12.5px">' + esc(t.Binary || "") + "</p>";
+
+  const flags = t.Flags || [];
+  if (flags.length) {
+    const h = document.createElement("h2");
+    h.textContent = "Flags";
+    art.append(h);
+    const box = document.createElement("div");
+    box.className = "flags";
+    flags.forEach((f, i) => box.append(flagRow(f, i)));
+    art.append(box);
+  } else {
+    const p = document.createElement("p");
+    p.className = "noflags";
+    p.textContent = "No flags — just copy or run the command.";
+    art.append(p);
+  }
+
+  // command + actions
+  const h2 = document.createElement("h2");
+  h2.textContent = "Command";
+  art.append(h2);
+  const wrap = document.createElement("div");
+  wrap.className = "cmdwrap";
+  wrap.innerHTML =
+    '<pre class="cmd" id="cmd"></pre>' +
+    '<p class="missmsg" id="miss" hidden></p>' +
+    '<div class="actions">' +
+      '<button type="button" class="act run" id="run">▶ Run</button>' +
+      '<button type="button" class="act" id="copy">Copy</button>' +
+      '<button type="button" class="act" id="clear">Clear output</button>' +
+      '<span class="actmsg" id="actmsg"></span>' +
+    "</div>";
+  art.append(wrap);
+  wrap.querySelector("#copy").addEventListener("click", copyCmd);
+  wrap.querySelector("#run").addEventListener("click", toggleRun);
+  wrap.querySelector("#clear").addEventListener("click", () => { consoleEl().replaceChildren(); setConsoleHint(); });
+
+  // output console
+  const oh = document.createElement("h2");
+  oh.className = "outhead";
+  oh.innerHTML = '<span class="dot" id="dot"></span> Output';
+  art.append(oh);
+  const pre = document.createElement("pre");
+  pre.id = "console";
+  art.append(pre);
+
+  detailEl.append(art);
+  setConsoleHint();
+  updateScopeLine();
+  updateCmd();
+}
+
+function flagRow(f, i) {
+  const row = document.createElement("div");
+  row.className = "flag";
+
+  const label = document.createElement("div");
+  label.className = "label";
+  const flTok = f.Flag && !isPlaceholder(f.Flag) ? '<span class="fl">' + esc(f.Flag) + "</span> " : "";
+  label.innerHTML = flTok + esc(f.Name) + (f.Required ? ' <span class="req">*</span>' : "");
+  if (f.Desc) {
+    const d = document.createElement("p");
+    d.className = "fdesc";
+    d.textContent = f.Desc;
+    label.append(d);
+  }
+
+  const ctl = document.createElement("div");
+  ctl.className = "control";
+  if (f.Kind === BOOL) {
+    const lab = document.createElement("label");
+    lab.className = "sw";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = !!work[i].enabled;
+    cb.addEventListener("change", () => { work[i].enabled = cb.checked; updateCmd(); });
+    lab.append(cb, document.createTextNode(" enabled"));
+    ctl.append(lab);
+  } else if (f.Kind === CHOICE) {
+    const s = document.createElement("select");
+    for (const c of f.Choices || []) s.append(new Option(c, c));
+    s.value = work[i].value;
+    s.addEventListener("change", () => { work[i].value = s.value; updateCmd(); });
+    ctl.append(s);
+  } else {
+    const inp = document.createElement("input");
+    inp.type = "text";
+    inp.dataset.fi = i;
+    if (f.Kind === INT) inp.inputMode = "numeric";
+    inp.value = work[i].value;
+    inp.placeholder = f.Placeholder || "";
+    inp.addEventListener("input", () => { work[i].value = inp.value; updateCmd(); });
+    ctl.append(inp);
+  }
+  row.append(label, ctl);
+  return row;
+}
+
+// renderProjBar (re)builds the project selector, scope summary, and the
+// New / Scope / Delete / reload controls. Called on first render and after any
+// project edit, so it never rebuilds the whole detail (preserving flags/output).
+function renderProjBar() {
+  const bar = document.getElementById("projbar");
+  if (!bar) return;
+  bar.replaceChildren();
+
+  const label = document.createElement("label");
+  label.setAttribute("for", "proj");
+  label.textContent = "Project";
+
+  const sel = document.createElement("select");
+  sel.id = "proj";
+  sel.append(new Option("— none —", ""));
+  for (const p of PROJECTS) sel.append(new Option(p.name, p.name));
+  if (!PROJECTS.some((p) => p.name === activeProject)) activeProject = "";
+  sel.value = activeProject;
+  sel.addEventListener("change", () => { activeProject = sel.value; renderProjBar(); updateCmd(); });
+
+  const scope = document.createElement("span");
+  scope.className = "scope";
+  scope.id = "scope";
+
+  const newBtn = mkBtn("＋ New", "pbtn", openNewProject);
+  const scopeBtn = mkBtn("✎ Scope", "pbtn", () => openScopeEditor(activeProject));
+  const delBtn = mkBtn("🗑 Delete", "pbtn danger", deleteActiveProject);
+  const spacer = document.createElement("span");
+  spacer.className = "spacer";
+  const refresh = mkBtn("↻", "pbtn", refreshProjects);
+  refresh.title = "reload projects edited in the TUI";
+
+  newBtn.disabled = !SERVED;
+  scopeBtn.disabled = !SERVED || !activeProject;
+  delBtn.disabled = !SERVED || !activeProject;
+  if (!SERVED) newBtn.title = "open via --web to edit projects";
+
+  bar.append(label, sel, scope, newBtn, scopeBtn, delBtn, spacer, refresh);
+  updateScopeLine();
+}
+
+function mkBtn(text, cls, onClick) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = cls;
+  b.textContent = text;
+  b.addEventListener("click", onClick);
+  return b;
+}
+
+// ── project editing (writes through to projects.json via /api/projects) ─────
+function openModal() { modalEl.hidden = false; }
+function closeModal() { modalEl.hidden = true; dialogEl.replaceChildren(); }
+modalEl.addEventListener("click", (e) => { if (e.target === modalEl) closeModal(); });
+
+async function projApi(body) {
+  const res = await fetch("/api/projects", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode: mode.key, ...body }),
+  });
+  if (!res.ok) throw new Error((await res.text()).trim() || ("HTTP " + res.status));
+  PROJECTS = await res.json();
+  mode.projects = PROJECTS;
+  return PROJECTS;
+}
+
+function openNewProject() {
+  if (!SERVED) { toast("open via --web to edit projects"); return; }
+  dialogEl.replaceChildren();
+  dialogEl.innerHTML =
+    "<h3>New project</h3>" +
+    '<div class="row"><input type="text" id="np-name" placeholder="project name" autocomplete="off" spellcheck="false"></div>' +
+    '<p class="err" id="np-err" hidden></p>' +
+    '<div class="foot"><button type="button" class="act" id="np-cancel">Cancel</button>' +
+    '<button type="button" class="act run" id="np-create">Create</button></div>';
+  openModal();
+  const input = dialogEl.querySelector("#np-name");
+  const err = dialogEl.querySelector("#np-err");
+  input.focus();
+  const create = async () => {
+    const name = input.value.trim();
+    if (!name) { input.focus(); return; }
+    try {
+      await projApi({ op: "create", name });
+      activeProject = name;
+      closeModal();
+      renderProjBar();
+      updateCmd();
+      toast("Project created ✓");
+      openScopeEditor(name); // go straight to adding scope — a project needs it
+    } catch (e) { err.textContent = e.message; err.hidden = false; }
+  };
+  dialogEl.querySelector("#np-create").addEventListener("click", create);
+  dialogEl.querySelector("#np-cancel").addEventListener("click", closeModal);
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); create(); } });
+}
+
+async function deleteActiveProject() {
+  if (!SERVED || !activeProject) return;
+  if (!confirm('Delete project "' + activeProject + '"?')) return;
+  try {
+    await projApi({ op: "delete", name: activeProject });
+    activeProject = "";
+    renderProjBar();
+    updateCmd();
+    toast("Project deleted");
+  } catch (e) { toast(e.message); }
+}
+
+function openScopeEditor(name) {
+  if (!SERVED) { toast("open via --web to edit projects"); return; }
+  if (!PROJECTS.some((p) => p.name === name)) { toast("select a project first"); return; }
+  dialogEl.replaceChildren();
+  const h = document.createElement("h3");
+  h.textContent = "Scope — " + name;
+  dialogEl.append(h);
+  dialogEl.append(scopeSection(name, "in", "In scope", "e.g. example.com, 10.0.0.1"));
+  dialogEl.append(scopeSection(name, "out", "Out of scope", "e.g. admin.example.com"));
+  const hint = document.createElement("p");
+  hint.className = "fdesc";
+  hint.textContent = "In-scope targets prefill a tool's URL/host field. A command touching an out-of-scope entry is refused when you Run it.";
+  dialogEl.append(hint);
+  const foot = document.createElement("div");
+  foot.className = "foot";
+  const done = mkBtn("Done", "act run", () => { closeModal(); renderProjBar(); updateCmd(); });
+  foot.append(done);
+  dialogEl.append(foot);
+  openModal();
+}
+
+function scopeSection(name, scope, title, placeholder) {
+  const sec = document.createElement("div");
+  const h = document.createElement("h4");
+  h.textContent = title;
+  sec.append(h);
+
+  const row = document.createElement("div");
+  row.className = "row";
+  const input = document.createElement("input");
+  input.type = "text";
+  input.placeholder = placeholder;
+  input.autocomplete = "off";
+  input.spellcheck = false;
+  const add = mkBtn("Add", "act", () => doAdd());
+  row.append(input, add);
+  sec.append(row);
+
+  const ul = document.createElement("ul");
+  ul.className = "scopelist";
+  sec.append(ul);
+
+  const listOf = () => {
+    const p = PROJECTS.find((p) => p.name === name) || {};
+    return (scope === "in" ? p.in_scope : p.out_of_scope) || [];
+  };
+  const refresh = () => {
+    ul.replaceChildren();
+    const list = listOf();
+    if (!list.length) {
+      const li = document.createElement("li");
+      li.className = "none";
+      li.textContent = "(none)";
+      ul.append(li);
+      return;
+    }
+    for (const v of list) {
+      const li = document.createElement("li");
+      const span = document.createElement("span");
+      span.textContent = v;
+      const x = document.createElement("button");
+      x.className = "x";
+      x.textContent = "✕";
+      x.title = "remove";
+      x.addEventListener("click", async () => {
+        try { await projApi({ op: "removeScope", name, scope, value: v }); refresh(); }
+        catch (e) { toast(e.message); }
+      });
+      li.append(span, x);
+      ul.append(li);
+    }
+  };
+  const doAdd = async () => {
+    const v = input.value.trim();
+    if (!v) { input.focus(); return; }
+    try {
+      await projApi({ op: "addScope", name, scope, value: v });
+      input.value = "";
+      refresh();
+      input.focus();
+    } catch (e) { toast(e.message); }
+  };
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); doAdd(); } });
+  refresh();
+  return sec;
+}
+
+function updateScopeLine() {
+  const el = document.getElementById("scope");
+  if (!el) return;
+  const p = PROJECTS.find((p) => p.name === activeProject);
+  if (!p) { el.textContent = PROJECTS.length ? "no project — scope block off" : "no projects (create them in the TUI)"; return; }
+  el.textContent = "(" + (p.in_scope || []).length + " in / " + (p.out_of_scope || []).length + " out of scope)";
+}
+
+function updateCmd() {
+  const cmdEl = document.getElementById("cmd");
+  if (!cmdEl) return;
+  const cmd = buildCommand();
+  cmdEl.textContent = cmd || "(empty)";
+
+  const miss = missingRequired();
+  const missEl = document.getElementById("miss");
+  missEl.hidden = miss.length === 0;
+  if (miss.length) missEl.textContent = "missing required: " + miss.join(", ");
+
+  // mark empty required text inputs
+  for (const inp of detailEl.querySelectorAll('input[data-fi]')) {
+    const i = +inp.dataset.fi;
+    const f = current.Flags[i];
+    inp.classList.toggle("missing", f.Required && !(work[i].value || "").trim());
+  }
+
+  const hit = outOfScopeHit(cmd);
+  const actmsg = document.getElementById("actmsg");
+  const runBtn = document.getElementById("run");
+  const running = !!runCtl;
+  if (!running) {
+    if (hit) { actmsg.textContent = "⚠ out-of-scope: " + hit + " — run blocked"; actmsg.classList.add("warn"); }
+    else if (miss.length) { actmsg.textContent = "fill required fields to run"; actmsg.classList.remove("warn"); }
+    else if (!SERVED) { actmsg.textContent = "open via --web to run commands"; actmsg.classList.remove("warn"); }
+    else { actmsg.textContent = ""; actmsg.classList.remove("warn"); }
+    runBtn.disabled = !SERVED || miss.length > 0 || !!hit;
+  }
+}
+
+// ── output console ──────────────────────────────────────────────────────────
+function consoleEl() { return document.getElementById("console"); }
+function setConsoleHint() {
+  const c = consoleEl();
+  if (c && !c.childElementCount) {
+    const s = document.createElement("span");
+    s.className = "hint";
+    s.textContent = SERVED
+      ? "Run a command to stream its output here. It runs on the machine serving this page."
+      : "Opened from disk — serve with `./run.sh --web` to run commands.";
+    c.append(s);
+  }
+}
+function appendLine(text, cls) {
+  const c = consoleEl();
+  if (!c) return;
+  if (c.querySelector(".hint")) c.replaceChildren();
+  const span = document.createElement("span");
+  if (cls) span.className = cls;
+  span.textContent = text + "\n";
+  c.append(span);
+  c.scrollTop = c.scrollHeight;
+}
+
+// ── run / copy ──────────────────────────────────────────────────────────────
+function copyCmd() {
+  const cmd = buildCommand();
+  navigator.clipboard?.writeText(cmd).then(
+    () => toast("Copied ✓"),
+    () => toast("Copy failed"),
+  );
+}
+
+function setRunning(on) {
+  const runBtn = document.getElementById("run");
+  const dot = document.getElementById("dot");
+  if (!runBtn) return;
+  if (on) {
+    runBtn.textContent = "■ Stop";
+    runBtn.classList.remove("run");
+    runBtn.classList.add("stop");
+    runBtn.disabled = false;
+    dot && dot.classList.add("live");
+  } else {
+    runBtn.textContent = "▶ Run";
+    runBtn.classList.remove("stop");
+    runBtn.classList.add("run");
+    dot && dot.classList.remove("live");
+    updateCmd();
+  }
+}
+
+function toggleRun() {
+  if (runCtl) { stopRun(); return; }
+  run();
+}
+
+function stopRun() {
+  if (runCtl) {
+    runCtl.abort();
+    runCtl = null;
+  }
+}
+
+async function run() {
+  if (!current || !SERVED) return;
+  const miss = missingRequired();
+  if (miss.length) { toast("missing required fields"); return; }
+
+  const idx = CATALOG.indexOf(current);
+  const values = (current.Flags || []).map((f, i) =>
+    f.Kind === BOOL ? { enabled: !!work[i].enabled, value: "" } : { value: work[i].value || "", enabled: false });
+
+  runCtl = new AbortController();
+  setRunning(true);
+  const actmsg = document.getElementById("actmsg");
+  actmsg.textContent = "running — output below (Stop to cancel)";
+  actmsg.classList.remove("warn");
+
+  try {
+    const res = await fetch("/api/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: mode.key, tool: idx, project: activeProject, values }),
+      signal: runCtl.signal,
+    });
+    if (!res.ok || !res.body) {
+      appendLine("— request failed (HTTP " + res.status + ") —", "err");
+      return;
+    }
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl);
+        buf = buf.slice(nl + 1);
+        if (line.trim()) handleRec(line);
+      }
+    }
+    if (buf.trim()) handleRec(buf);
+  } catch (e) {
+    if (e.name !== "AbortError") appendLine("— " + e.message + " —", "err");
+    else appendLine("— canceled —", "hint");
+  } finally {
+    runCtl = null;
+    setRunning(false);
+    document.getElementById("actmsg").textContent = "";
+  }
+}
+
+function handleRec(line) {
+  let rec;
+  try { rec = JSON.parse(line); } catch { appendLine(line); return; }
+  if (rec.final) {
+    if (rec.err) appendLine("— " + rec.err + " —", "err");
+    else appendLine("— done · exit 0 —", "done");
+    return;
+  }
+  if (typeof rec.line === "string") {
+    appendLine(rec.line, rec.line.startsWith("$ ") ? "cmdline" : null);
+  }
+}
+
+async function refreshProjects() {
+  if (!SERVED) { toast("not served"); return; }
+  try {
+    const res = await fetch("/api/projects?mode=" + encodeURIComponent(mode.key), { headers: { "Accept": "application/json" } });
+    if (res.ok) {
+      PROJECTS = await res.json();
+      mode.projects = PROJECTS;
+      renderProjBar(); // refresh the bar with the fresh list
+      updateCmd();
+      toast("Projects reloaded");
+    }
+  } catch { toast("reload failed"); }
+}
+
+// ── keyboard ────────────────────────────────────────────────────────────────
+const typing = (e) => /^(input|select|textarea)$/i.test(e.target.tagName);
+document.addEventListener("keydown", (e) => {
+  // While a dialog is open it owns the keyboard; only Escape (close) applies.
+  if (!modalEl.hidden) { if (e.key === "Escape") { e.preventDefault(); closeModal(); } return; }
+  if (e.key === "/" && !typing(e)) { e.preventDefault(); filterEl.focus(); filterEl.select(); return; }
+  if (e.target === filterEl) {
+    if (e.key === "ArrowDown") { e.preventDefault(); move(1); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); move(-1); }
+    else if (e.key === "Enter" || e.key === "Escape") { e.preventDefault(); detailEl.focus(); }
+    return;
+  }
+  if (typing(e)) {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (!document.getElementById("run")?.disabled) toggleRun(); }
+    return;
+  }
+  switch (e.key) {
+    case "j": case "ArrowDown": e.preventDefault(); move(1); break;
+    case "k": case "ArrowUp": e.preventDefault(); move(-1); break;
+    case "g": if (shown.length) { e.preventDefault(); select(shown[0]); } break;
+    case "G": if (shown.length) { e.preventDefault(); select(shown[shown.length - 1]); } break;
+    case "y": e.preventDefault(); copyCmd(); break;
+    case "Enter": e.preventDefault(); if (!document.getElementById("run")?.disabled || runCtl) toggleRun(); break;
+    case "Escape": if (filterEl.value) { filterEl.value = ""; applyFilter(); } break;
+  }
+});
+
+filterEl.addEventListener("input", applyFilter);
+
+// ── boot ────────────────────────────────────────────────────────────────────
+// parseHash splits #<mode>/<slug> (slug optional, mode optional for back-compat).
+function parseHash() {
+  const raw = decodeURIComponent(location.hash.slice(1));
+  const slash = raw.indexOf("/");
+  if (slash >= 0 && MODE_BY_KEY.has(raw.slice(0, slash))) {
+    return { key: raw.slice(0, slash), slug: raw.slice(slash + 1) };
+  }
+  return { key: null, slug: raw }; // no/unknown mode prefix: treat as a slug
+}
+
+const boot = parseHash();
+if (boot.key && MODE_BY_KEY.has(boot.key)) {
+  mode = MODE_BY_KEY.get(boot.key);
+  CATALOG = mode.catalog;
+  PROJECTS = mode.projects;
+  bySlug = mode.bySlug;
+  activeProject = mode.activeProject;
+}
+renderModeToggle();
+applyFilter();
+const bootTool = (boot.slug && bySlug.get(boot.slug)) || shown[0] || CATALOG[0] || null;
+if (bootTool) select(bootTool);
+
+window.addEventListener("hashchange", () => {
+  const h = parseHash();
+  if (h.key && h.key !== mode.key) activateMode(h.key);
+  const t = h.slug && bySlug.get(h.slug);
+  if (t && t !== current) select(t);
+});
+</script>
+</body>
+</html>
