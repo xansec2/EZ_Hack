@@ -478,7 +478,8 @@ const MODE_BY_KEY = new Map(MODES.map((m) => [m.key, m]));
 
 // The active mode and live aliases into it. activateMode() snapshots these back
 // into the outgoing mode and reloads them from the incoming one, so each mode
-// keeps its own selection, filter, project list, and active project.
+// keeps its own selection, filter, and active project. The project list itself
+// is shared across modes (same list in every mode.projects).
 let mode = MODES[0];
 let CATALOG = mode.catalog;
 let PROJECTS = mode.projects;
@@ -888,9 +889,16 @@ async function projApi(body) {
     body: JSON.stringify({ mode: mode.key, ...body }),
   });
   if (!res.ok) throw new Error((await res.text()).trim() || ("HTTP " + res.status));
-  PROJECTS = await res.json();
-  mode.projects = PROJECTS;
+  setProjectsEverywhere(await res.json());
   return PROJECTS;
+}
+
+// Projects are shared across every mode, so apply a fresh list to all of them
+// (and to the live PROJECTS alias) — switching modes then shows the same list
+// without a reload.
+function setProjectsEverywhere(list) {
+  PROJECTS = list;
+  for (const m of MODES) m.projects = list;
 }
 
 function openNewProject() {
@@ -1195,8 +1203,7 @@ async function refreshProjects() {
   try {
     const res = await fetch("/api/projects?mode=" + encodeURIComponent(mode.key), { headers: { "Accept": "application/json" } });
     if (res.ok) {
-      PROJECTS = await res.json();
-      mode.projects = PROJECTS;
+      setProjectsEverywhere(await res.json());
       renderProjBar(); // refresh the bar with the fresh list
       updateCmd();
       toast("Projects reloaded");

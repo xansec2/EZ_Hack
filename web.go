@@ -32,12 +32,11 @@ var indexHTML string
 
 // The server serves several catalogs ("modes"): the web pentest catalog, the
 // Active Directory catalog, and the Linux local-privilege-escalation catalog.
-// Each mode keeps its projects in the same file its standalone TUI uses, so
-// edits stay in sync across both.
+// All modes share one project store, so an engagement and its scope are visible
+// whichever catalog you're working in.
 type webMode struct {
 	Key   string // stable id used in URLs and API calls
 	Label string // shown on the banner toggle
-	dir   string // config sub-directory for this mode's projects.json
 	tools func() []Tool
 }
 
@@ -45,10 +44,10 @@ type webMode struct {
 // the web catalog is read after payloads.go's init() has appended to it.
 func webModes() []webMode {
 	return []webMode{
-		{Key: "setup", Label: "setup", dir: "setup", tools: func() []Tool { return setupCatalog }},
-		{Key: "web", Label: "web", dir: "web", tools: func() []Tool { return catalog }},
-		{Key: "ad", Label: "AD", dir: "active-directory", tools: func() []Tool { return adCatalog }},
-		{Key: "linux", Label: "Linux", dir: "linux", tools: func() []Tool { return linuxCatalog }},
+		{Key: "setup", Label: "setup", tools: func() []Tool { return setupCatalog }},
+		{Key: "web", Label: "web", tools: func() []Tool { return catalog }},
+		{Key: "ad", Label: "AD", tools: func() []Tool { return adCatalog }},
+		{Key: "linux", Label: "Linux", tools: func() []Tool { return linuxCatalog }},
 	}
 }
 
@@ -89,20 +88,22 @@ func runWeb(port int, open bool) error {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Write(page)
 	})
-	// Live refresh of a mode's project list (?mode=web|ad).
+	// Live refresh of the shared project list. The mode param is accepted (and
+	// validated) for backward compatibility, but the list is the same for all.
 	mux.HandleFunc("GET /api/projects", func(w http.ResponseWriter, r *http.Request) {
 		if !sameOrigin(r) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
-		m, ok := modeFor(r.URL.Query().Get("mode"))
-		if !ok {
-			http.Error(w, "unknown mode", http.StatusBadRequest)
-			return
+		if mode := r.URL.Query().Get("mode"); mode != "" {
+			if _, ok := modeFor(mode); !ok {
+				http.Error(w, "unknown mode", http.StatusBadRequest)
+				return
+			}
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
-		projects := loadProjectsIn(m.dir)
+		projects := loadProjects()
 		if projects == nil {
 			projects = []Project{}
 		}
@@ -125,11 +126,12 @@ func runWeb(port int, open bool) error {
 // startup, so rebuild the binary after editing catalog.go / ad_catalog.go.
 func buildPage() ([]byte, error) {
 	modes := make([]map[string]any, 0, len(webModes()))
+	shared := loadProjects()
+	if shared == nil {
+		shared = []Project{}
+	}
 	for _, m := range webModes() {
-		projects := loadProjectsIn(m.dir)
-		if projects == nil {
-			projects = []Project{}
-		}
+		projects := shared
 		modes = append(modes, map[string]any{
 			"key":      m.Key,
 			"label":    m.Label,
@@ -174,10 +176,11 @@ func handleProjects(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
-	mode, ok := modeFor(req.Mode)
-	if !ok {
-		http.Error(w, "unknown mode", http.StatusBadRequest)
-		return
+	if req.Mode != "" {
+		if _, ok := modeFor(req.Mode); !ok {
+			http.Error(w, "unknown mode", http.StatusBadRequest)
+			return
+		}
 	}
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
@@ -185,7 +188,7 @@ func handleProjects(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	projects := loadProjectsIn(mode.dir)
+	projects := loadProjects()
 	idx := -1
 	for i, p := range projects {
 		if p.Name == name {
@@ -231,7 +234,7 @@ func handleProjects(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := saveProjectsListIn(mode.dir, projects); err != nil {
+	if err := saveProjectsList(projects); err != nil {
 		http.Error(w, "could not save projects", http.StatusInternalServerError)
 		return
 	}
@@ -318,7 +321,7 @@ func handleRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cmdStr := t.Command()
-	if hit := outOfScopeHitFor(mode.dir, req.Project, cmdStr); hit != "" {
+	if hit := outOfScopeHitFor(req.Project, cmdStr); hit != "" {
 		writeRunError(w, "blocked — command targets out-of-scope: "+hit)
 		return
 	}
@@ -376,14 +379,14 @@ func writeRunError(w http.ResponseWriter, msg string) {
 }
 
 // outOfScopeHitFor returns the first out-of-scope entry of the named project
-// (in the given mode's project store) that appears in cmd, or "" if none (or no
-// such project). Projects are loaded fresh so scope edited in the TUI takes
-// effect without a server restart.
-func outOfScopeHitFor(dir, projectName, cmd string) string {
+// (in the shared project store) that appears in cmd, or "" if none (or no such
+// project). Projects are loaded fresh so scope edited in the TUI takes effect
+// without a server restart.
+func outOfScopeHitFor(projectName, cmd string) string {
 	if strings.TrimSpace(projectName) == "" {
 		return ""
 	}
-	for _, p := range loadProjectsIn(dir) {
+	for _, p := range loadProjects() {
 		if p.Name != projectName {
 			continue
 		}

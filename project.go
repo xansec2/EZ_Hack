@@ -18,13 +18,20 @@ type Project struct {
 	OutScope []string `json:"out_of_scope"`
 }
 
-// projectsPath is where this app's (the web TUI's) projects persist.
-func projectsPath() string { return projectsPathIn("web") }
+// Projects are shared across every mode (web / AD / Linux / setup): an
+// engagement and its scope are the same wherever you work, so they live in one
+// file rather than one per mode. legacyProjectDirs are the old per-mode files,
+// merged into the shared store once on first load so nothing created before the
+// switch is lost.
+const sharedProjectsDir = "pentest-suite"
 
-// projectsPathIn is where the projects for a given config sub-directory live.
-// The --web server uses this to keep each mode's projects in the same file its
-// standalone TUI uses ("web" for web mode, "active-directory" for AD mode).
-func projectsPathIn(sub string) string {
+var legacyProjectDirs = []string{"web", "active-directory", "linux", "setup"}
+
+// projectsPath is where this app's projects persist, shared across all modes.
+func projectsPath() string { return configProjectsPath(sharedProjectsDir) }
+
+// configProjectsPath resolves a config sub-directory's projects.json.
+func configProjectsPath(sub string) string {
 	dir, err := os.UserConfigDir()
 	if err != nil || dir == "" {
 		return sub + "-projects.json"
@@ -32,32 +39,73 @@ func projectsPathIn(sub string) string {
 	return filepath.Join(dir, sub, "projects.json")
 }
 
-// loadProjects reads the web TUI's saved projects, returning nil if none exist.
-func loadProjects() []Project { return loadProjectsIn("web") }
+// loadProjects reads the shared project list, returning nil if none exist. On
+// first run (no shared file yet) it migrates any projects from the old per-mode
+// files so a project created before the switch still shows up everywhere.
+func loadProjects() []Project {
+	if ps, ok := readProjects(projectsPath()); ok {
+		return ps
+	}
+	merged := migrateLegacyProjects()
+	if len(merged) > 0 {
+		_ = saveProjectsList(merged)
+	}
+	return merged
+}
 
-// loadProjectsIn reads the saved projects for a config sub-directory.
-func loadProjectsIn(sub string) []Project {
-	data, err := os.ReadFile(projectsPathIn(sub))
+// readProjects reads and parses a projects.json; ok is false when the file is
+// absent or unreadable (so callers can tell "no file" from "empty list").
+func readProjects(path string) (ps []Project, ok bool) {
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil
+		return nil, false
 	}
-	var ps []Project
 	if err := json.Unmarshal(data, &ps); err != nil {
-		return nil
+		return nil, false
 	}
-	return ps
+	return ps, true
+}
+
+// migrateLegacyProjects merges the pre-shared per-mode project files into one
+// list, unioning the scopes of any projects that share a name.
+func migrateLegacyProjects() []Project {
+	var out []Project
+	byName := map[string]int{}
+	for _, sub := range legacyProjectDirs {
+		ps, ok := readProjects(configProjectsPath(sub))
+		if !ok {
+			continue
+		}
+		for _, p := range ps {
+			if i, seen := byName[p.Name]; seen {
+				out[i].InScope = unionStrings(out[i].InScope, p.InScope)
+				out[i].OutScope = unionStrings(out[i].OutScope, p.OutScope)
+				continue
+			}
+			byName[p.Name] = len(out)
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// unionStrings appends entries of b not already in a, preserving order.
+func unionStrings(a, b []string) []string {
+	for _, v := range b {
+		if !contains(a, v) {
+			a = append(a, v)
+		}
+	}
+	return a
 }
 
 // saveProjects persists the current projects, best-effort.
 func (m *model) saveProjects() { _ = saveProjectsList(m.projects) }
 
-// saveProjectsList writes the web TUI's projects to disk.
-func saveProjectsList(ps []Project) error { return saveProjectsListIn("web", ps) }
-
-// saveProjectsListIn writes projects to a given config sub-directory. Shared by
-// the TUI and the --web server so both edit the same per-mode file.
-func saveProjectsListIn(sub string, ps []Project) error {
-	path := projectsPathIn(sub)
+// saveProjectsList writes the shared project list to disk. Shared by the TUI
+// and the --web server so both edit the same file across every mode.
+func saveProjectsList(ps []Project) error {
+	path := projectsPath()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
