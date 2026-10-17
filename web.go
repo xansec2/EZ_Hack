@@ -45,6 +45,7 @@ type webMode struct {
 // the web catalog is read after payloads.go's init() has appended to it.
 func webModes() []webMode {
 	return []webMode{
+		{Key: "setup", Label: "setup", dir: "setup", tools: func() []Tool { return setupCatalog }},
 		{Key: "web", Label: "web", dir: "web", tools: func() []Tool { return catalog }},
 		{Key: "ad", Label: "AD", dir: "active-directory", tools: func() []Tool { return adCatalog }},
 		{Key: "linux", Label: "Linux", dir: "linux", tools: func() []Tool { return linuxCatalog }},
