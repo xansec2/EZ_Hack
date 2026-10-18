@@ -466,6 +466,29 @@
   }
   #termview[hidden] { display: none; }
 
+  /* Reverse Shells mode: dock the terminals full-width along the bottom so the
+     attacker (listener) and victim shells sit under the command builder. The
+     grip flips to a horizontal (row-resize) divider. */
+  .main.termbottom { flex-direction: column; }
+  .main.termbottom #termview {
+    width: auto;
+    height: var(--term-h, 46vh);
+    min-width: 0;
+    min-height: 140px;
+    border-left: 0;
+    border-top: 2px solid var(--border);
+  }
+  .main.termbottom .termgrip {
+    left: 0;
+    right: 0;
+    top: -4px;
+    bottom: auto;
+    width: auto;
+    height: 9px;
+    cursor: row-resize;
+  }
+  .main.termbottom .termgrip::before { width: 46px; height: 3px; }
+
   /* Draggable vertical divider between the builder and the terminal dock.
      Overlaid on the dock's left edge so it works regardless of pane layout. */
   .termgrip {
@@ -965,6 +988,24 @@ function activateMode(key) {
   const restore = mode.currentSlug && bySlug.get(mode.currentSlug);
   if (restore) select(restore);
   else setHash();
+  syncModeChrome();
+}
+
+// syncModeChrome reshapes the page for the active mode. In Reverse Shells mode
+// the interactive terminals dock full-width along the bottom (attacker + victim
+// shells) and the streamed Output console is hidden — there you Run straight
+// into the shells. Every other mode keeps the side-docked terminal and the
+// Output panel.
+function syncModeChrome() {
+  const isRev = mode.key === "revshell";
+  const main = document.querySelector(".main");
+  const view = document.getElementById("termview");
+  const out = document.getElementById("outputpanel");
+  if (main) main.classList.toggle("termbottom", isRev);
+  if (out) out.hidden = isRev;
+  // Drop whichever inline dimension the other dock orientation left behind so
+  // the stylesheet's size for this orientation applies.
+  if (view) { if (isRev) view.style.width = ""; else view.style.height = ""; }
 }
 
 // ── detail / configurator ──────────────────────────────────────────────────
@@ -1006,19 +1047,31 @@ function renderDetail() {
 
   // command + actions — the last block in the scrolling article, so you scroll
   // down past the flags to reach the command and Run/Copy.
+  // In Reverse Shells mode the command is typed into an interactive shell rather
+  // than streamed to the output console, so offer two targets: the listener goes
+  // to the attacker pane, the payload to the victim pane.
+  const isRev = mode.key === "revshell";
+  const actions = isRev
+    ? '<button type="button" class="act run" id="run-att">▶ Run on attacker</button>' +
+      '<button type="button" class="act run" id="run-vic">▶ Run on victim</button>' +
+      '<button type="button" class="act" id="copy">Copy</button>'
+    : '<button type="button" class="act run" id="run">▶ Run</button>' +
+      '<button type="button" class="act" id="copy">Copy</button>';
   const wrap = document.createElement("div");
   wrap.className = "cmdwrap";
   wrap.innerHTML =
     '<h2 class="cmdhead">Command</h2>' +
     '<pre class="cmd" id="cmd"></pre>' +
     '<p class="missmsg" id="miss" hidden></p>' +
-    '<div class="actions">' +
-      '<button type="button" class="act run" id="run">▶ Run</button>' +
-      '<button type="button" class="act" id="copy">Copy</button>' +
-    "</div>";
+    '<div class="actions">' + actions + "</div>";
   art.append(wrap);
   wrap.querySelector("#copy").addEventListener("click", copyCmd);
-  wrap.querySelector("#run").addEventListener("click", toggleRun);
+  const runBtn = wrap.querySelector("#run");
+  if (runBtn) runBtn.addEventListener("click", toggleRun);
+  const runAtt = wrap.querySelector("#run-att");
+  if (runAtt) runAtt.addEventListener("click", () => runInTerminal("attacker"));
+  const runVic = wrap.querySelector("#run-vic");
+  if (runVic) runVic.addEventListener("click", () => runInTerminal("victim"));
 
   // The output console and its controls live in the persistent #outputpanel
   // below, so they are not rebuilt here and output survives tool/catalog
@@ -1306,14 +1359,19 @@ function updateCmd() {
 
   const hit = outOfScopeHit(cmd);
   const actmsg = document.getElementById("actmsg");
-  const runBtn = document.getElementById("run");
+  // The run control is a single button in most modes, or the attacker/victim
+  // pair in Reverse Shells mode — disable whichever are present together.
+  const runBtns = ["run", "run-att", "run-vic"]
+    .map((id) => document.getElementById(id))
+    .filter(Boolean);
   const running = !!runCtl;
   if (!running) {
     if (hit) { actmsg.textContent = "⚠ out-of-scope: " + hit + " — run blocked"; actmsg.classList.add("warn"); }
     else if (miss.length) { actmsg.textContent = "fill required fields to run"; actmsg.classList.remove("warn"); }
     else if (!SERVED) { actmsg.textContent = "open via --web to run commands"; actmsg.classList.remove("warn"); }
     else { actmsg.textContent = ""; actmsg.classList.remove("warn"); }
-    runBtn.disabled = !SERVED || miss.length > 0 || !!hit;
+    const disabled = !SERVED || miss.length > 0 || !!hit;
+    for (const b of runBtns) b.disabled = disabled;
   }
 }
 
@@ -1449,6 +1507,26 @@ function handleRec(line) {
   }
 }
 
+// ── reverse-shell run (into the interactive panes) ──────────────────────────
+// Labels for the two Reverse Shells panes, keyed by role. runInTerminal types
+// the built command straight into the matching shell: the listener into the
+// attacker pane, the payload into the victim pane.
+const REV_ROLE = {
+  attacker: "⚔ attacker (listener)",
+  victim: "🎯 victim",
+};
+function runInTerminal(role) {
+  if (!SERVED) { toast("open via --web to run"); return; }
+  const miss = missingRequired();
+  if (miss.length) { toast("missing required: " + miss.join(", ")); return; }
+  const cmd = buildCommand();
+  if (!cmd) { toast("empty command"); return; }
+  const hit = outOfScopeHit(cmd);
+  if (hit) { toast("out-of-scope: " + hit + " — blocked"); return; }
+  const pane = TermWorkspace.sendToRole(role, cmd);
+  if (pane) toast("Sent to " + role + " ▸");
+}
+
 async function refreshProjects() {
   if (!SERVED) { toast("not served"); return; }
   try {
@@ -1460,6 +1538,13 @@ async function refreshProjects() {
       toast("Projects reloaded");
     }
   } catch { toast("reload failed"); }
+}
+
+// primaryRun is the keyboard default for Enter: run the listener on the attacker
+// in Reverse Shells mode, otherwise toggle the normal streamed run.
+function primaryRun() {
+  if (mode.key === "revshell") { runInTerminal("attacker"); return; }
+  if (!document.getElementById("run")?.disabled || runCtl) toggleRun();
 }
 
 // ── keyboard ────────────────────────────────────────────────────────────────
@@ -1482,7 +1567,7 @@ document.addEventListener("keydown", (e) => {
     return;
   }
   if (typing(e)) {
-    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (!document.getElementById("run")?.disabled) toggleRun(); }
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); primaryRun(); }
     return;
   }
   switch (e.key) {
@@ -1491,7 +1576,7 @@ document.addEventListener("keydown", (e) => {
     case "g": if (shown.length) { e.preventDefault(); select(shown[0]); } break;
     case "G": if (shown.length) { e.preventDefault(); select(shown[shown.length - 1]); } break;
     case "y": e.preventDefault(); copyCmd(); break;
-    case "Enter": e.preventDefault(); if (!document.getElementById("run")?.disabled || runCtl) toggleRun(); break;
+    case "Enter": e.preventDefault(); primaryRun(); break;
     case "Escape": if (filterEl.value) { filterEl.value = ""; applyFilter(); } break;
   }
 });
@@ -1834,13 +1919,15 @@ function escTerm(s) {
 
 // ── one terminal pane: DOM + WebSocket + emulator ───────────────────────────
 class Pane {
-  constructor(workspace, n, name) {
+  constructor(workspace, n, name, role) {
     this.ws = workspace;
     this.emu = new TermEmu(80, 24);
     this.dec = new TextDecoder();
     this.socket = null;
     this.alive = false;
     this.dirty = false;
+    this.role = role || null;   // "attacker" / "victim" in revshell mode, else null
+    this.pendingSend = null;    // a command to type once the shell connects
     this.lastCols = 0; this.lastRows = 0;
 
     const el = document.createElement("div");
@@ -1891,7 +1978,15 @@ class Pane {
     catch (e) { this._fail(e.message); return; }
     sock.binaryType = "arraybuffer";
     this.socket = sock;
-    sock.onopen = () => { this.alive = true; this._setDot("live"); this.fit(true); this.screenEl.focus(); };
+    sock.onopen = () => {
+      this.alive = true; this._setDot("live"); this.fit(true); this.screenEl.focus();
+      // Flush a command queued before the shell was ready (e.g. a brand-new
+      // attacker/victim pane created by a Run button).
+      if (this.pendingSend != null) {
+        const t = this.pendingSend; this.pendingSend = null;
+        setTimeout(() => this._sendInput(t + "\r"), 60);
+      }
+    };
     sock.onmessage = (ev) => {
       if (typeof ev.data === "string") this.emu.write(ev.data);
       else this.emu.write(this.dec.decode(new Uint8Array(ev.data), { stream: true }));
@@ -1964,6 +2059,13 @@ class Pane {
     }
   }
 
+  // sendCommand types a command line into the shell and runs it (adds Enter). If
+  // the socket isn't open yet it's queued and flushed from onopen.
+  sendCommand(text) {
+    if (this.alive) this._sendInput(text + "\r");
+    else this.pendingSend = text;
+  }
+
   focus() { this.screenEl.focus(); }
 
   destroy() {
@@ -2029,8 +2131,8 @@ const TermWorkspace = {
       // can keep one as the attacker (listener) and one as the victim machine.
       if (typeof mode !== "undefined" && mode && mode.key === "revshell") {
         this.setCols(2);
-        this.add("⚔ attacker (listener)");
-        this.add("🎯 victim");
+        this.add(REV_ROLE.attacker, "attacker");
+        this.add(REV_ROLE.victim, "victim");
       } else {
         this.setCols(this.cols);
         this.add();
@@ -2063,8 +2165,8 @@ const TermWorkspace = {
     this.charH = this.fontPx * 1.35;
   },
 
-  add(name) {
-    const pane = new Pane(this, ++this.seq, name);
+  add(name, role) {
+    const pane = new Pane(this, ++this.seq, name, role);
     this.panes.push(pane);
     this.panesEl().appendChild(pane.el);
     this._syncEmpty();
@@ -2072,6 +2174,25 @@ const TermWorkspace = {
     pane.fit(true);
     this.setFocused(pane);
     pane.focus();
+    return pane;
+  },
+
+  // paneForRole returns the attacker/victim pane, creating a labelled one if the
+  // user closed it (or the dock was first opened outside revshell mode).
+  paneForRole(role) {
+    let pane = this.panes.find((p) => p.role === role);
+    if (!pane) pane = this.add(REV_ROLE[role] || role, role);
+    return pane;
+  },
+
+  // sendToRole opens the dock (side-by-side) if needed, then types the command
+  // into the attacker or victim shell and runs it.
+  sendToRole(role, cmd) {
+    if (!this.visible()) this.open();
+    if (this.cols < 2) this.setCols(2);
+    const pane = this.paneForRole(role);
+    pane.focus();
+    pane.sendCommand(cmd);
     return pane;
   },
 
@@ -2198,6 +2319,7 @@ document.getElementById("clear").addEventListener("click", () => {
 setConsoleHint();
 
 renderModeToggle();
+syncModeChrome();
 applyFilter();
 const bootTool = (boot.slug && bySlug.get(boot.slug)) || shown[0] || CATALOG[0] || null;
 if (bootTool) select(bootTool);
