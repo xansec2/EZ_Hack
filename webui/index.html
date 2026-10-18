@@ -1834,7 +1834,7 @@ function escTerm(s) {
 
 // ── one terminal pane: DOM + WebSocket + emulator ───────────────────────────
 class Pane {
-  constructor(workspace, n) {
+  constructor(workspace, n, name) {
     this.ws = workspace;
     this.emu = new TermEmu(80, 24);
     this.dec = new TextDecoder();
@@ -1855,6 +1855,8 @@ class Pane {
     this.el = el;
     this.screenEl = el.querySelector(".pane-screen");
     this.dotEl = el.querySelector(".pane-dot");
+    this.nameEl = el.querySelector(".pane-name");
+    if (name) this.nameEl.value = name; // e.g. "attacker" / "victim" in revshell mode
 
     el.querySelector(".pane-x").addEventListener("click", () => this.ws.remove(this));
     el.querySelector(".pane-name").addEventListener("keydown", (e) => {
@@ -2021,7 +2023,19 @@ const TermWorkspace = {
     // Dock below the builder instead of replacing it, so both stay visible.
     this.view().hidden = false;
     document.getElementById("termtoggle").setAttribute("aria-pressed", "true");
-    if (!this.started) { this.started = true; this.setCols(this.cols); this.add(); }
+    if (!this.started) {
+      this.started = true;
+      // In Reverse Shells mode start with two labelled panes side by side so you
+      // can keep one as the attacker (listener) and one as the victim machine.
+      if (typeof mode !== "undefined" && mode && mode.key === "revshell") {
+        this.setCols(2);
+        this.add("⚔ attacker (listener)");
+        this.add("🎯 victim");
+      } else {
+        this.setCols(this.cols);
+        this.add();
+      }
+    }
     // Re-measure now that the panes are visible (they had zero size while hidden).
     this.measureCell();
     for (const p of this.panes) p.fit(true);
@@ -2049,8 +2063,8 @@ const TermWorkspace = {
     this.charH = this.fontPx * 1.35;
   },
 
-  add() {
-    const pane = new Pane(this, ++this.seq);
+  add(name) {
+    const pane = new Pane(this, ++this.seq, name);
     this.panes.push(pane);
     this.panesEl().appendChild(pane.el);
     this._syncEmpty();

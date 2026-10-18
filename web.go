@@ -48,6 +48,7 @@ func webModes() []webMode {
 		{Key: "web", Label: "web", tools: func() []Tool { return catalog }},
 		{Key: "ad", Label: "AD", tools: func() []Tool { return adCatalog }},
 		{Key: "linux", Label: "Linux", tools: func() []Tool { return linuxCatalog }},
+		{Key: "revshell", Label: "Reverse Shells", tools: func() []Tool { return revshellCatalog }},
 	}
 }
 
