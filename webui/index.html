@@ -470,6 +470,25 @@
   }
   #termview[hidden] { display: none; }
 
+  /* Reverse Shells mode docks the terminal along the BOTTOM (horizontal split)
+     so the command builder keeps its full width above it, rather than the side
+     dock used elsewhere. Mirrors the narrow-screen stacking: the dock takes a
+     draggable height and the grip resizes vertically. */
+  .main.revdock { flex-direction: column; }
+  .main.revdock #termview {
+    width: auto !important;
+    height: var(--term-h, 42vh);
+    min-width: 0;
+    min-height: 140px;
+    border-left: 0;
+    border-top: 2px solid var(--border);
+  }
+  .main.revdock .termgrip {
+    left: 0; right: 0; top: -4px; bottom: auto;
+    width: auto; height: 9px; cursor: row-resize;
+  }
+  .main.revdock .termgrip::before { width: 46px; height: 3px; }
+
   /* Draggable vertical divider between the builder and the terminal dock.
      Overlaid on the dock's left edge so it works regardless of pane layout. */
   .termgrip {
@@ -977,8 +996,22 @@ function activateMode(key) {
 // attacker/victim shells (docked on the right) — which also gives the command
 // list and builder the full height to scroll. Every other mode keeps it.
 function syncModeChrome() {
+  const isRev = mode.key === "revshell";
   const out = document.getElementById("outputpanel");
-  if (out) out.hidden = mode.key === "revshell";
+  if (out) out.hidden = isRev;
+  // Dock the terminal along the bottom (horizontal split) in Reverse Shells
+  // mode; the side dock is used in every other mode.
+  const main = document.querySelector(".main");
+  if (main) main.classList.toggle("revdock", isRev);
+  // Clear any size dragged in the other orientation so each layout starts from
+  // its CSS default (a width for the side dock, a height for the bottom dock).
+  const view = document.getElementById("termview");
+  if (view) { view.style.width = ""; view.style.height = ""; }
+  // If the dock is already open, re-fit its shells to the new orientation.
+  if (typeof TermWorkspace !== "undefined" && TermWorkspace.visible()) {
+    TermWorkspace.measureCell();
+    for (const p of TermWorkspace.panes) p.fit(true);
+  }
 }
 
 // ── detail / configurator ──────────────────────────────────────────────────
@@ -1026,7 +1059,9 @@ function renderDetail() {
   const isRev = mode.key === "revshell";
   const actions = isRev
     ? '<button type="button" class="act run" id="run-att">▶ Run on attacker</button>' +
+      '<button type="button" class="act stop" id="stop-att">■ Stop attacker</button>' +
       '<button type="button" class="act run" id="run-vic">▶ Run on victim</button>' +
+      '<button type="button" class="act stop" id="stop-vic">■ Stop victim</button>' +
       '<button type="button" class="act" id="copy">Copy</button>'
     : '<button type="button" class="act run" id="run">▶ Run</button>' +
       '<button type="button" class="act" id="copy">Copy</button>';
@@ -1045,6 +1080,10 @@ function renderDetail() {
   if (runAtt) runAtt.addEventListener("click", () => runInTerminal("attacker"));
   const runVic = wrap.querySelector("#run-vic");
   if (runVic) runVic.addEventListener("click", () => runInTerminal("victim"));
+  const stopAtt = wrap.querySelector("#stop-att");
+  if (stopAtt) stopAtt.addEventListener("click", () => stopInTerminal("attacker"));
+  const stopVic = wrap.querySelector("#stop-vic");
+  if (stopVic) stopVic.addEventListener("click", () => stopInTerminal("victim"));
 
   // The output console and its controls live in the persistent #outputpanel
   // below, so they are not rebuilt here and output survives tool/catalog
@@ -1498,6 +1537,17 @@ function runInTerminal(role) {
   if (hit) { toast("out-of-scope: " + hit + " — blocked"); return; }
   const pane = TermWorkspace.sendToRole(role, cmd);
   if (pane) toast("Sent to " + role + " ▸");
+}
+
+// stopInTerminal interrupts whatever is running in the attacker/victim shell by
+// sending Ctrl+C, leaving the pane open. Does nothing if that pane isn't live.
+function stopInTerminal(role) {
+  if (!SERVED) { toast("open via --web to run"); return; }
+  const pane = TermWorkspace.panes.find((p) => p.role === role);
+  if (!pane || !pane.alive) { toast("no live " + role + " shell"); return; }
+  pane.sendInterrupt();
+  pane.focus();
+  toast("Sent ^C to " + role + " ▪");
 }
 
 async function refreshProjects() {
@@ -2038,6 +2088,9 @@ class Pane {
     if (this.alive) this._sendInput(text + "\r");
     else this.pendingSend = text;
   }
+
+  // sendInterrupt sends Ctrl+C to stop whatever command is running in the shell.
+  sendInterrupt() { this._sendInput("\x03"); }
 
   focus() { this.screenEl.focus(); }
 
