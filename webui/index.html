@@ -13,46 +13,48 @@
   project's out-of-scope list, exactly like the TUI's ctrl+r.
 -->
 <style>
+  /* Tokyo Night theme. Dark (Night) is the default; an explicit light OS
+     preference gets the matching Tokyo Night Day variant. */
   :root {
-    --bg: #f6f9f9;
-    --panel: #ffffff;
-    --border: #d7e3e2;
-    --hover: #eef5f4;
-    --sel: #e0f5f2;
-    --fg: #1f2933;
-    --fg-strong: #0f1a1c;
-    --dim: #66737a;
-    --accent: #0d9488;
-    --accent-soft: #0f766e;
-    --banner: #0d9488;
-    --code-bg: #f0f5f5;
-    --code-fg: #10201e;
-    --ok: #15803d;
-    --warn: #b45309;
-    --danger: #b91c1c;
+    --bg: #1a1b26;
+    --panel: #24283b;
+    --border: #2f334d;
+    --hover: #292e42;
+    --sel: rgba(122, 162, 247, 0.18);
+    --fg: #a9b1d6;
+    --fg-strong: #c0caf5;
+    --dim: #565f89;
+    --accent: #7aa2f7;
+    --accent-soft: #7dcfff;
+    --banner: #3d59a1;
+    --code-bg: #1f2335;
+    --code-fg: #c0caf5;
+    --ok: #9ece6a;
+    --warn: #e0af68;
+    --danger: #f7768e;
     --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
     --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    color-scheme: light;
+    color-scheme: dark;
   }
-  @media (prefers-color-scheme: dark) {
+  @media (prefers-color-scheme: light) {
     :root {
-      --bg: #101518;
-      --panel: #151b1e;
-      --border: #263136;
-      --hover: #1b2327;
-      --sel: rgba(45, 212, 191, 0.12);
-      --fg: #d4d9db;
-      --fg-strong: #f1f5f5;
-      --dim: #87949a;
-      --accent: #2dd4bf;
-      --accent-soft: #99f6e4;
-      --banner: #0d9488;
-      --code-bg: #1a2124;
-      --code-fg: #f0fdfa;
-      --ok: #86efac;
-      --warn: #ffcb6b;
-      --danger: #fca5a5;
-      color-scheme: dark;
+      --bg: #e1e2e7;
+      --panel: #ffffff;
+      --border: #c4c8da;
+      --hover: #d9dbe4;
+      --sel: rgba(46, 125, 233, 0.14);
+      --fg: #343b58;
+      --fg-strong: #1a1b26;
+      --dim: #848cb5;
+      --accent: #2e7de9;
+      --accent-soft: #007197;
+      --banner: #2e7de9;
+      --code-bg: #e9e9ed;
+      --code-fg: #343b58;
+      --ok: #587539;
+      --warn: #8c6c3e;
+      --danger: #f52a65;
+      color-scheme: light;
     }
   }
 
@@ -321,24 +323,24 @@
   /* output console */
   h2.outhead { display: flex; align-items: center; gap: 10px; }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); }
-  .dot.live { background: var(--ok); box-shadow: 0 0 0 0 rgba(21,128,61,0.5); animation: pulse 1.2s infinite; }
-  @keyframes pulse { to { box-shadow: 0 0 0 6px rgba(21,128,61,0); } }
+  .dot.live { background: var(--ok); box-shadow: 0 0 0 0 rgba(158,206,106,0.5); animation: pulse 1.2s infinite; }
+  @keyframes pulse { to { box-shadow: 0 0 0 6px rgba(158,206,106,0); } }
   #console {
     flex: 1;
     margin: 0;
     padding: 12px 14px;
     min-height: 0;
     overflow: auto;
-    background: #0b1013;
-    color: #d7e3e2;
+    background: #16161e;
+    color: #c0caf5;
     font: 12.5px/1.5 var(--mono);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
   }
-  #console .cmdline { color: #5eead4; }
-  #console .err { color: #fca5a5; }
-  #console .done { color: #86efac; }
-  #console .hint { color: #66737a; font-style: italic; }
+  #console .cmdline { color: #7dcfff; }
+  #console .err { color: #f7768e; }
+  #console .done { color: #9ece6a; }
+  #console .hint { color: #565f89; font-style: italic; }
 
   /* project controls + modal */
   .projbar .pbtn {
@@ -554,7 +556,7 @@
     flex-direction: column;
     min-width: 0;
     min-height: 0;
-    background: #0b1013;
+    background: #16161e;
     border: 1px solid var(--border);
     border-radius: 8px;
     overflow: hidden;
@@ -566,15 +568,15 @@
     align-items: center;
     gap: 8px;
     padding: 5px 10px;
-    background: #10171b;
+    background: #1f2335;
     border-bottom: 1px solid var(--border);
-    color: #8aa0a2;
+    color: #565f89;
     font: 12px var(--sans);
   }
   .pane-head .pane-name {
     background: none;
     border: 0;
-    color: #cfe3e2;
+    color: #c0caf5;
     font: 12.5px var(--mono);
     padding: 1px 4px;
     border-radius: 4px;
@@ -582,14 +584,14 @@
     flex: 1;
   }
   .pane-head .pane-name:focus { outline: 1px solid var(--accent); background: rgba(0,0,0,0.3); }
-  .pane-head .pane-dot { width: 7px; height: 7px; border-radius: 50%; background: #3f5a57; flex: none; }
+  .pane-head .pane-dot { width: 7px; height: 7px; border-radius: 50%; background: #3b4261; flex: none; }
   .pane-head .pane-dot.live { background: var(--ok); }
   .pane-head .pane-dot.dead { background: var(--danger); }
   .pane-head .pane-x {
     flex: none;
     border: 0;
     background: none;
-    color: #8aa0a2;
+    color: #565f89;
     font-size: 15px;
     line-height: 1;
     cursor: pointer;
@@ -601,7 +603,7 @@
     min-height: 0;
     overflow: auto;
     padding: 6px 8px;
-    color: #d7e3e2;
+    color: #c0caf5;
     font: 13px/1.35 var(--mono);
     white-space: pre;
     outline: none;
@@ -609,7 +611,7 @@
   }
   .pane-screen b { font-weight: 700; }
   .pane-screen u { text-decoration: underline; }
-  .pane-screen .cur { background: #d7e3e2; color: #0b1013; }
+  .pane-screen .cur { background: #c0caf5; color: #16161e; }
   .term-empty { padding: 24px; color: var(--dim); font: 13px var(--sans); grid-column: 1 / -1; }
 
   @media (max-width: 760px) {
@@ -1620,11 +1622,11 @@ filterEl.addEventListener("input", applyFilter);
 
 // 16-colour ANSI palette (0–7 normal, 8–15 bright).
 const ANSI16 = [
-  "#2e3436", "#cc0000", "#4e9a06", "#c4a000", "#3465a4", "#75507b", "#06989a", "#d3d7cf",
-  "#555753", "#ef2929", "#8ae234", "#fce94f", "#729fcf", "#ad7fa8", "#34e2e2", "#eeeeec",
+  "#15161e", "#f7768e", "#9ece6a", "#e0af68", "#7aa2f7", "#bb9af7", "#7dcfff", "#a9b1d6",
+  "#414868", "#f7768e", "#9ece6a", "#e0af68", "#7aa2f7", "#bb9af7", "#7dcfff", "#c0caf5",
 ];
-const TERM_DEFAULT_FG = "#d7e3e2";
-const TERM_DEFAULT_BG = "#0b1013";
+const TERM_DEFAULT_FG = "#c0caf5";
+const TERM_DEFAULT_BG = "#16161e";
 
 // color256 maps an xterm 256-colour index to a CSS colour.
 function color256(n) {
