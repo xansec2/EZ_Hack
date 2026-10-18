@@ -182,12 +182,10 @@
      switching catalogs (setup / web / AD / linux) — only "Clear output" empties
      it. */
   .workarea { min-height: 0; display: flex; flex-direction: column; }
-  /* #detail is a fixed frame: the project bar is pinned at the top and the
-     command box at the bottom, while only the flags (article) scroll between
-     them. The command box never moves or floats over the flags. */
-  #detail { flex: 1 1 auto; min-height: 0; overflow: hidden; outline: none; display: flex; flex-direction: column; }
-  #detail > .projbar { flex: none; }
-  article { flex: 1 1 auto; min-height: 0; overflow-y: auto; max-width: 920px; width: 100%; padding: 20px 32px 40px; }
+  /* The whole configurator scrolls as one: flags then the command box at the
+     end. Scroll down to reach the command and Run/Copy after filling it in. */
+  #detail { flex: 1 1 auto; min-height: 0; overflow: auto; outline: none; display: flex; flex-direction: column; }
+  article { flex: 1; max-width: 920px; width: 100%; padding: 20px 32px 40px; }
 
   #outputpanel {
     flex: none;
@@ -283,15 +281,7 @@
   .flag .control label.sw { display: inline-flex; align-items: center; gap: 8px; color: var(--dim); font-size: 13px; cursor: pointer; }
   .noflags { color: var(--dim); font-style: italic; }
 
-  /* command box — a static footer pinned at the bottom of #detail (not sticky,
-     so it never floats over the flags as you scroll). */
-  .cmdwrap {
-    flex: none;
-    padding: 12px 32px 14px;
-    border-top: 1px solid var(--border);
-    background: var(--panel);
-  }
-  .cmdwrap > .cmdhead { margin: 0 0 8px; font-size: 14px; }
+  /* command box — part of the normal scroll flow, at the end of the flags. */
   .cmd {
     position: relative;
     margin: 0;
@@ -603,7 +593,7 @@
     .keys { display: none; }
     .layout { grid-template-columns: 1fr; grid-template-rows: 34vh 1fr; }
     .sidebar { border-right: 0; border-bottom: 1px solid var(--border); }
-    .projbar, article, .cmdwrap { padding-left: 16px; padding-right: 16px; }
+    .projbar, article { padding-left: 16px; padding-right: 16px; }
     .flag { grid-template-columns: 1fr; gap: 4px; }
     #termpanes { grid-template-columns: 1fr; }
     /* Too narrow for a side-by-side split: stack the dock below instead. */
@@ -1014,8 +1004,8 @@ function renderDetail() {
     art.append(p);
   }
 
-  // command + actions — a static footer appended to #detail (not the scrolling
-  // article), so it stays pinned at the bottom instead of floating as you scroll.
+  // command + actions — the last block in the scrolling article, so you scroll
+  // down past the flags to reach the command and Run/Copy.
   const wrap = document.createElement("div");
   wrap.className = "cmdwrap";
   wrap.innerHTML =
@@ -1026,6 +1016,7 @@ function renderDetail() {
       '<button type="button" class="act run" id="run">▶ Run</button>' +
       '<button type="button" class="act" id="copy">Copy</button>' +
     "</div>";
+  art.append(wrap);
   wrap.querySelector("#copy").addEventListener("click", copyCmd);
   wrap.querySelector("#run").addEventListener("click", toggleRun);
 
@@ -1033,7 +1024,6 @@ function renderDetail() {
   // below, so they are not rebuilt here and output survives tool/catalog
   // switches.
   detailEl.append(art);
-  detailEl.append(wrap);
   updateScopeLine();
   updateCmd();
 }
