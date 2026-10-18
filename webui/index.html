@@ -196,6 +196,10 @@
     border-top: 1px solid var(--border);
     background: var(--panel);
   }
+  /* The ID rule above sets display:flex, which beats the `hidden` attribute's
+     default display:none — so an explicit rule is needed to hide the panel
+     (e.g. in Reverse Shells mode). */
+  #outputpanel[hidden] { display: none; }
   .outbar {
     flex: none;
     display: flex;
@@ -465,29 +469,6 @@
     border-left: 2px solid var(--border);
   }
   #termview[hidden] { display: none; }
-
-  /* Reverse Shells mode: dock the terminals full-width along the bottom so the
-     attacker (listener) and victim shells sit under the command builder. The
-     grip flips to a horizontal (row-resize) divider. */
-  .main.termbottom { flex-direction: column; }
-  .main.termbottom #termview {
-    width: auto;
-    height: var(--term-h, 46vh);
-    min-width: 0;
-    min-height: 140px;
-    border-left: 0;
-    border-top: 2px solid var(--border);
-  }
-  .main.termbottom .termgrip {
-    left: 0;
-    right: 0;
-    top: -4px;
-    bottom: auto;
-    width: auto;
-    height: 9px;
-    cursor: row-resize;
-  }
-  .main.termbottom .termgrip::before { width: 46px; height: 3px; }
 
   /* Draggable vertical divider between the builder and the terminal dock.
      Overlaid on the dock's left edge so it works regardless of pane layout. */
@@ -992,20 +973,12 @@ function activateMode(key) {
 }
 
 // syncModeChrome reshapes the page for the active mode. In Reverse Shells mode
-// the interactive terminals dock full-width along the bottom (attacker + victim
-// shells) and the streamed Output console is hidden — there you Run straight
-// into the shells. Every other mode keeps the side-docked terminal and the
-// Output panel.
+// the streamed Output console is hidden — there you Run straight into the
+// attacker/victim shells (docked on the right) — which also gives the command
+// list and builder the full height to scroll. Every other mode keeps it.
 function syncModeChrome() {
-  const isRev = mode.key === "revshell";
-  const main = document.querySelector(".main");
-  const view = document.getElementById("termview");
   const out = document.getElementById("outputpanel");
-  if (main) main.classList.toggle("termbottom", isRev);
-  if (out) out.hidden = isRev;
-  // Drop whichever inline dimension the other dock orientation left behind so
-  // the stylesheet's size for this orientation applies.
-  if (view) { if (isRev) view.style.width = ""; else view.style.height = ""; }
+  if (out) out.hidden = mode.key === "revshell";
 }
 
 // ── detail / configurator ──────────────────────────────────────────────────
