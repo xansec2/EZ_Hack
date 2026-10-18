@@ -77,6 +77,41 @@ A few things to know:
 | `ctrl+enter`         | run (or stop) the command                |
 | `esc`                | clear the filter                         |
 
+### Interactive terminal (split screen)
+
+The command builder's **Run** is one-shot: it assembles a catalog command and
+streams its output back, with no way to type into the running process. For
+anything that wants a real shell — responding to a prompt, chaining ad-hoc
+commands, poking at a target interactively — there's now a full terminal.
+
+Click **⌗ Terminal** in the top-right to open the terminal workspace (it takes
+over the catalog view; click it again, or **✕ Close**, to go back). Each pane is
+an independent shell running on the machine serving the page, over a WebSocket
+to `/api/terminal`, backed by a real pseudo-terminal — so interactive programs,
+colours, and line editing all work.
+
+**Split screen** lets you watch several at once:
+
+- **＋ Split** (or `ctrl+shift+t`) opens another shell pane.
+- **Columns 1–4** sets how the panes tile, so you can line up two or three
+  side by side and compare their output live.
+- **A− / A+** change the text size; **✕** on a pane closes that shell.
+- Click a pane to focus it; what you type goes to that pane's shell. Paste works
+  too. Closing a pane (or the workspace) ends its shell.
+
+A few things to know:
+
+- **These are unrestricted shells**, not catalog commands — the project
+  out-of-scope block does **not** apply to what you type here (it can't know your
+  intent the way it can with an assembled command). Same trust model as the rest
+  of the app: localhost-only, same-origin-checked, your machine.
+- The terminal is **Linux-only** (it needs a PTY; see `run.sh`). On other
+  platforms the pane opens and says so rather than failing silently.
+- The emulator is a compact, built-in one (no `xterm.js`, so it works offline).
+  It handles colours, carriage-return progress bars, cursor moves, and the
+  alternate-screen buffer; heavy full-screen TUIs (e.g. `vim`, `htop`) mostly
+  work but aren't pixel-perfect.
+
 ## Tools included
 
 Curated toward **bug bounty** — tools that find leads on their own and

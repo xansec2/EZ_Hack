@@ -168,8 +168,34 @@
   .count { padding: 8px 16px; border-top: 1px solid var(--border); color: var(--dim); font-size: 12px; }
 
   /* ── detail ─────────────────────────────────────────────────────────── */
-  #detail { min-height: 0; overflow: auto; outline: none; display: flex; flex-direction: column; }
+  /* The right-hand column is split vertically: the configurator (#detail) on
+     top, and a persistent Output panel at the bottom. The output panel lives
+     outside the per-tool render, so its contents survive switching tools and
+     switching catalogs (setup / web / AD / linux) — only "Clear output" empties
+     it. */
+  .workarea { min-height: 0; display: flex; flex-direction: column; }
+  #detail { flex: 1 1 auto; min-height: 0; overflow: auto; outline: none; display: flex; flex-direction: column; }
   article { flex: 1; max-width: 920px; width: 100%; padding: 20px 32px 40px; }
+
+  #outputpanel {
+    flex: none;
+    height: clamp(160px, 34vh, 520px);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    border-top: 1px solid var(--border);
+    background: var(--panel);
+  }
+  .outbar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .outbar .spacer { flex: 1; }
+  .outbar h2 { margin: 0; font-size: 14px; }
 
   /* project bar */
   .projbar {
@@ -285,15 +311,13 @@
   .dot.live { background: var(--ok); box-shadow: 0 0 0 0 rgba(21,128,61,0.5); animation: pulse 1.2s infinite; }
   @keyframes pulse { to { box-shadow: 0 0 0 6px rgba(21,128,61,0); } }
   #console {
+    flex: 1;
     margin: 0;
     padding: 12px 14px;
-    min-height: 120px;
-    max-height: 42vh;
+    min-height: 0;
     overflow: auto;
     background: #0b1013;
     color: #d7e3e2;
-    border: 1px solid var(--border);
-    border-radius: 8px;
     font: 12.5px/1.5 var(--mono);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
@@ -400,19 +424,148 @@
   }
   #toast.show { opacity: 1; transform: translate(-50%, 0); }
 
+  /* ── terminal toggle (banner) ─────────────────────────────────────────── */
+  .bannerright { display: flex; align-items: center; gap: 14px; }
+  .termtoggle {
+    padding: 4px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 999px;
+    background: transparent;
+    color: #fff;
+    font: 700 13px/1.2 var(--sans);
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    opacity: 0.85;
+  }
+  .termtoggle:hover { opacity: 1; background: rgba(255, 255, 255, 0.12); }
+  .termtoggle[aria-pressed="true"] { background: #fff; color: var(--banner); border-color: #fff; opacity: 1; }
+
+  /* ── terminal workspace ───────────────────────────────────────────────── */
+  #termview {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+  }
+  #termview[hidden] { display: none; }
+  .termbar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 8px 14px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .termbar .termtitle { font-weight: 700; color: var(--accent-soft); letter-spacing: 0.04em; }
+  .termbar .spacer { margin-left: auto; }
+  .tbtn, .colbtn {
+    padding: 4px 11px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--panel);
+    color: var(--fg);
+    font: 12.5px var(--sans);
+    cursor: pointer;
+  }
+  .tbtn:hover, .colbtn:hover { color: var(--accent); border-color: var(--accent); }
+  .termcols, .termfont { display: inline-flex; align-items: center; gap: 4px; }
+  .termcols-label { color: var(--dim); font-size: 12px; margin-right: 2px; }
+  .colbtn { min-width: 30px; padding: 4px 8px; }
+  .colbtn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  #termpanes {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: repeat(var(--cols, 2), 1fr);
+    grid-auto-rows: 1fr;
+    gap: 8px;
+    padding: 8px;
+  }
+  .pane {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    background: #0b1013;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .pane.focused { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .pane-head {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 10px;
+    background: #10171b;
+    border-bottom: 1px solid var(--border);
+    color: #8aa0a2;
+    font: 12px var(--sans);
+  }
+  .pane-head .pane-name {
+    background: none;
+    border: 0;
+    color: #cfe3e2;
+    font: 12.5px var(--mono);
+    padding: 1px 4px;
+    border-radius: 4px;
+    min-width: 40px;
+    flex: 1;
+  }
+  .pane-head .pane-name:focus { outline: 1px solid var(--accent); background: rgba(0,0,0,0.3); }
+  .pane-head .pane-dot { width: 7px; height: 7px; border-radius: 50%; background: #3f5a57; flex: none; }
+  .pane-head .pane-dot.live { background: var(--ok); }
+  .pane-head .pane-dot.dead { background: var(--danger); }
+  .pane-head .pane-x {
+    flex: none;
+    border: 0;
+    background: none;
+    color: #8aa0a2;
+    font-size: 15px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 2px;
+  }
+  .pane-head .pane-x:hover { color: var(--danger); }
+  .pane-screen {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 6px 8px;
+    color: #d7e3e2;
+    font: 13px/1.35 var(--mono);
+    white-space: pre;
+    outline: none;
+    cursor: text;
+  }
+  .pane-screen b { font-weight: 700; }
+  .pane-screen u { text-decoration: underline; }
+  .pane-screen .cur { background: #d7e3e2; color: #0b1013; }
+  .term-empty { padding: 24px; color: var(--dim); font: 13px var(--sans); grid-column: 1 / -1; }
+
   @media (max-width: 760px) {
     .keys { display: none; }
     .layout { grid-template-columns: 1fr; grid-template-rows: 34vh 1fr; }
     .sidebar { border-right: 0; border-bottom: 1px solid var(--border); }
     .projbar, article { padding-left: 16px; padding-right: 16px; }
     .flag { grid-template-columns: 1fr; gap: 4px; }
+    #termpanes { grid-template-columns: 1fr; }
   }
 </style>
 </head>
 <body>
 <header class="banner">
   <div class="modes" id="modes" role="tablist" aria-label="Catalog"></div>
-  <span class="keys"><kbd>/</kbd> filter · <kbd>j</kbd>/<kbd>k</kbd> move · <kbd>y</kbd> copy · <kbd>enter</kbd> run</span>
+  <div class="bannerright">
+    <span class="keys"><kbd>/</kbd> filter · <kbd>j</kbd>/<kbd>k</kbd> move · <kbd>y</kbd> copy · <kbd>enter</kbd> run</span>
+    <button type="button" class="termtoggle" id="termtoggle" aria-pressed="false" title="Open an interactive split-screen terminal">⌗ Terminal</button>
+  </div>
 </header>
 <div class="layout">
   <aside class="sidebar">
@@ -422,8 +575,48 @@
     <nav id="list" aria-label="Tools"></nav>
     <div id="count" class="count"></div>
   </aside>
-  <main id="detail" tabindex="-1"></main>
+  <div class="workarea">
+    <main id="detail" tabindex="-1"></main>
+    <!-- Persistent output panel. Rendered once and never torn down, so streamed
+         command output stays put when you switch tools or catalogs; only the
+         Clear output button empties it. -->
+    <section id="outputpanel" aria-label="Command output">
+      <div class="outbar">
+        <h2 class="outhead"><span class="dot" id="dot"></span> Output</h2>
+        <span class="actmsg" id="actmsg"></span>
+        <span class="spacer"></span>
+        <button type="button" class="act" id="clear">Clear output</button>
+      </div>
+      <pre id="console"></pre>
+    </section>
+  </div>
 </div>
+
+<!-- Interactive split-screen terminal workspace. Hidden until toggled; when
+     shown it replaces the catalog layout. Each pane is an independent shell
+     (PTY) served from /api/terminal, so you can run commands side by side and
+     compare their output. -->
+<section id="termview" hidden aria-label="Terminal workspace">
+  <div class="termbar">
+    <span class="termtitle">Terminals</span>
+    <button type="button" class="tbtn" id="term-add" title="Open another shell (Ctrl+Shift+T)">＋ Split</button>
+    <span class="termcols" role="group" aria-label="Columns">
+      <span class="termcols-label">Columns</span>
+      <button type="button" class="colbtn" data-cols="1">1</button>
+      <button type="button" class="colbtn" data-cols="2">2</button>
+      <button type="button" class="colbtn" data-cols="3">3</button>
+      <button type="button" class="colbtn" data-cols="4">4</button>
+    </span>
+    <span class="spacer"></span>
+    <span class="termfont" role="group" aria-label="Font size">
+      <button type="button" class="tbtn" id="term-font-dn" title="Smaller text">A−</button>
+      <button type="button" class="tbtn" id="term-font-up" title="Larger text">A+</button>
+    </span>
+    <button type="button" class="tbtn" id="term-close" title="Close the terminal workspace">✕ Close</button>
+  </div>
+  <div id="termpanes"></div>
+</section>
+
 <div id="toast" role="status" aria-live="polite"></div>
 <div id="modal" class="modal" hidden><div class="dialog" id="dialog" role="dialog" aria-modal="true"></div></div>
 
@@ -758,25 +951,15 @@ function renderDetail() {
     '<div class="actions">' +
       '<button type="button" class="act run" id="run">▶ Run</button>' +
       '<button type="button" class="act" id="copy">Copy</button>' +
-      '<button type="button" class="act" id="clear">Clear output</button>' +
-      '<span class="actmsg" id="actmsg"></span>' +
     "</div>";
   art.append(wrap);
   wrap.querySelector("#copy").addEventListener("click", copyCmd);
   wrap.querySelector("#run").addEventListener("click", toggleRun);
-  wrap.querySelector("#clear").addEventListener("click", () => { consoleEl().replaceChildren(); setConsoleHint(); });
 
-  // output console
-  const oh = document.createElement("h2");
-  oh.className = "outhead";
-  oh.innerHTML = '<span class="dot" id="dot"></span> Output';
-  art.append(oh);
-  const pre = document.createElement("pre");
-  pre.id = "console";
-  art.append(pre);
-
+  // The output console and its controls live in the persistent #outputpanel
+  // below, so they are not rebuilt here and output survives tool/catalog
+  // switches.
   detailEl.append(art);
-  setConsoleHint();
   updateScopeLine();
   updateCmd();
 }
@@ -1145,6 +1328,10 @@ async function run() {
 
   runCtl = new AbortController();
   setRunning(true);
+  // Output accumulates in the persistent console across tools and catalogs, so
+  // mark where each run begins with a header naming the catalog and tool.
+  if (consoleEl().childElementCount && !consoleEl().querySelector(".hint")) appendLine("", null);
+  appendLine("── " + mode.label + " · " + current.Name + " ──", "done");
   const actmsg = document.getElementById("actmsg");
   actmsg.textContent = "running — output below (Stop to cancel)";
   actmsg.classList.remove("warn");
@@ -1214,6 +1401,13 @@ async function refreshProjects() {
 // ── keyboard ────────────────────────────────────────────────────────────────
 const typing = (e) => /^(input|select|textarea)$/i.test(e.target.tagName);
 document.addEventListener("keydown", (e) => {
+  // While the terminal workspace is open it owns the keyboard (each pane sends
+  // keystrokes to its shell). Only its own chord — Ctrl+Shift+T to split —
+  // applies here; the catalog shortcuts (j/k/enter/…) stay out of the way.
+  if (TermWorkspace.visible()) {
+    if (e.ctrlKey && e.shiftKey && (e.key === "T" || e.key === "t")) { e.preventDefault(); TermWorkspace.add(); }
+    return;
+  }
   // While a dialog is open it owns the keyboard; only Escape (close) applies.
   if (!modalEl.hidden) { if (e.key === "Escape") { e.preventDefault(); closeModal(); } return; }
   if (e.key === "/" && !typing(e)) { e.preventDefault(); filterEl.focus(); filterEl.select(); return; }
@@ -1240,6 +1434,626 @@ document.addEventListener("keydown", (e) => {
 
 filterEl.addEventListener("input", applyFilter);
 
+// ════════════════════════════════════════════════════════════════════════════
+// Interactive split-screen terminal workspace
+//
+// Each pane is a real shell running on the server over a WebSocket to
+// /api/terminal: keystrokes are sent up, output comes back, and several panes
+// tile side by side so you can run commands and compare their output. There is
+// no xterm.js — to stay self-contained and work offline this includes a small
+// ANSI terminal emulator (TermEmu) that handles the common cases: colours,
+// carriage returns / progress bars, cursor moves, line/screen erase and the
+// alternate-screen buffer used by full-screen programs.
+// ════════════════════════════════════════════════════════════════════════════
+
+// 16-colour ANSI palette (0–7 normal, 8–15 bright).
+const ANSI16 = [
+  "#2e3436", "#cc0000", "#4e9a06", "#c4a000", "#3465a4", "#75507b", "#06989a", "#d3d7cf",
+  "#555753", "#ef2929", "#8ae234", "#fce94f", "#729fcf", "#ad7fa8", "#34e2e2", "#eeeeec",
+];
+const TERM_DEFAULT_FG = "#d7e3e2";
+const TERM_DEFAULT_BG = "#0b1013";
+
+// color256 maps an xterm 256-colour index to a CSS colour.
+function color256(n) {
+  if (n < 16) return ANSI16[n];
+  if (n < 232) {
+    n -= 16;
+    const r = Math.floor(n / 36), g = Math.floor(n / 6) % 6, b = n % 6;
+    const ch = (v) => (v === 0 ? 0 : 55 + v * 40);
+    return "rgb(" + ch(r) + "," + ch(g) + "," + ch(b) + ")";
+  }
+  const v = 8 + (n - 232) * 10;
+  return "rgb(" + v + "," + v + "," + v + ")";
+}
+
+// A terminal cell. fg/bg are CSS colour strings or null (meaning default).
+function blankCell() { return { ch: " ", fg: null, bg: null, bold: false, ul: false, inv: false }; }
+
+class TermEmu {
+  constructor(cols, rows) {
+    this.cols = Math.max(1, cols || 80);
+    this.rows = Math.max(1, rows || 24);
+    this.scrollMax = 2000;
+    this.reset();
+  }
+
+  reset() {
+    this.screen = this._blankScreen(this.rows);
+    this.scrollback = [];
+    this.cx = 0; this.cy = 0;
+    this.pen = blankCell();
+    this.saved = null;
+    this.alt = null; // saved primary screen while in the alternate buffer
+    this.parse = { state: "ground", buf: "" };
+  }
+
+  _blankScreen(rows) {
+    const s = [];
+    for (let y = 0; y < rows; y++) s.push(this._blankRow());
+    return s;
+  }
+  _blankRow() {
+    const r = [];
+    for (let x = 0; x < this.cols; x++) r.push(blankCell());
+    return r;
+  }
+
+  resize(cols, rows) {
+    cols = Math.max(1, cols); rows = Math.max(1, rows);
+    if (cols === this.cols && rows === this.rows) return;
+    this.cols = cols; this.rows = rows;
+    // Rebuild each row to the new width; rebuild the screen to the new height.
+    const fix = (row) => {
+      while (row.length < cols) row.push(blankCell());
+      if (row.length > cols) row.length = cols;
+      return row;
+    };
+    this.screen = this.screen.map(fix);
+    while (this.screen.length < rows) this.screen.push(this._blankRow());
+    while (this.screen.length > rows) this.scrollback.push(this.screen.shift());
+    if (this.alt) { this.alt.screen = this.alt.screen.map(fix); }
+    this.cx = Math.min(this.cx, cols - 1);
+    this.cy = Math.min(this.cy, rows - 1);
+    this._trimScrollback();
+  }
+
+  _trimScrollback() {
+    if (this.scrollback.length > this.scrollMax) {
+      this.scrollback.splice(0, this.scrollback.length - this.scrollMax);
+    }
+  }
+
+  _newLine() {
+    if (this.cy >= this.rows - 1) {
+      this.scrollback.push(this.screen.shift());
+      this.screen.push(this._blankRow());
+      this._trimScrollback();
+    } else {
+      this.cy++;
+    }
+  }
+
+  _putChar(ch) {
+    if (this.cx >= this.cols) { this.cx = 0; this._newLine(); }
+    const cell = this.screen[this.cy][this.cx];
+    cell.ch = ch;
+    cell.fg = this.pen.fg; cell.bg = this.pen.bg;
+    cell.bold = this.pen.bold; cell.ul = this.pen.ul; cell.inv = this.pen.inv;
+    this.cx++;
+  }
+
+  // write feeds a chunk of output through the parser.
+  write(str) {
+    for (const ch of str) this._feed(ch);
+  }
+
+  _feed(ch) {
+    const p = this.parse;
+    if (p.state === "ground") {
+      const code = ch.codePointAt(0);
+      if (ch === "\x1b") { p.state = "esc"; p.buf = ""; return; }
+      if (ch === "\r") { this.cx = 0; return; }
+      if (ch === "\n" || ch === "\x0b" || ch === "\x0c") { this._newLine(); return; }
+      if (ch === "\b") { this.cx = Math.max(0, this.cx - 1); return; }
+      if (ch === "\t") { this.cx = Math.min(this.cols - 1, (Math.floor(this.cx / 8) + 1) * 8); return; }
+      if (code === 0x07) return; // bell
+      if (code < 0x20) return;   // other control chars: ignore
+      this._putChar(ch);
+      return;
+    }
+    if (p.state === "esc") {
+      if (ch === "[") { p.state = "csi"; p.buf = ""; return; }
+      if (ch === "]") { p.state = "osc"; p.buf = ""; return; }
+      if (ch === "(" || ch === ")" || ch === "#" || ch === "%") { p.state = "ignore1"; return; }
+      if (ch === "M") { // reverse index (scroll down)
+        if (this.cy > 0) this.cy--; else { this.screen.unshift(this._blankRow()); this.screen.pop(); }
+        p.state = "ground"; return;
+      }
+      if (ch === "c") { this.reset(); return; } // full reset (also clears parser)
+      p.state = "ground"; // unknown short escape: drop it
+      return;
+    }
+    if (p.state === "ignore1") { p.state = "ground"; return; }
+    if (p.state === "osc") {
+      // OSC … terminated by BEL or ESC\. We don't render titles; just consume.
+      if (ch === "\x07") { p.state = "ground"; return; }
+      if (ch === "\x1b") { p.state = "oscesc"; return; }
+      return;
+    }
+    if (p.state === "oscesc") { p.state = "ground"; return; }
+    if (p.state === "csi") {
+      if ((ch >= "0" && ch <= "9") || ch === ";" || ch === "?" || ch === ">" || ch === "=") {
+        p.buf += ch; return;
+      }
+      this._csi(ch, p.buf);
+      p.state = "ground";
+      return;
+    }
+  }
+
+  _csi(final, buf) {
+    const priv = buf.startsWith("?");
+    const body = priv ? buf.slice(1) : buf;
+    const params = body.split(";").map((x) => (x === "" ? 0 : parseInt(x, 10) || 0));
+    const p0 = params[0] || 0;
+    const clampX = () => { this.cx = Math.max(0, Math.min(this.cols - 1, this.cx)); };
+    const clampY = () => { this.cy = Math.max(0, Math.min(this.rows - 1, this.cy)); };
+    switch (final) {
+      case "A": this.cy -= (p0 || 1); clampY(); break;
+      case "B": this.cy += (p0 || 1); clampY(); break;
+      case "C": this.cx += (p0 || 1); clampX(); break;
+      case "D": this.cx -= (p0 || 1); clampX(); break;
+      case "E": this.cy += (p0 || 1); this.cx = 0; clampY(); break;
+      case "F": this.cy -= (p0 || 1); this.cx = 0; clampY(); break;
+      case "G": this.cx = (p0 || 1) - 1; clampX(); break;
+      case "d": this.cy = (p0 || 1) - 1; clampY(); break;
+      case "H": case "f":
+        this.cy = (params[0] || 1) - 1; this.cx = (params[1] || 1) - 1; clampY(); clampX(); break;
+      case "J": this._eraseScreen(p0); break;
+      case "K": this._eraseLine(p0); break;
+      case "m": this._sgr(params); break;
+      case "s": this.saved = { cx: this.cx, cy: this.cy }; break;
+      case "u": if (this.saved) { this.cx = this.saved.cx; this.cy = this.saved.cy; clampX(); clampY(); } break;
+      case "h": if (priv) this._privMode(params, true); break;
+      case "l": if (priv) this._privMode(params, false); break;
+      case "P": this._deleteChars(p0 || 1); break;
+      case "@": this._insertChars(p0 || 1); break;
+      case "X": this._eraseChars(p0 || 1); break;
+      default: break; // unsupported: ignore
+    }
+  }
+
+  _eraseScreen(mode) {
+    const blank = () => blankCell();
+    if (mode === 0) {
+      for (let x = this.cx; x < this.cols; x++) this.screen[this.cy][x] = blank();
+      for (let y = this.cy + 1; y < this.rows; y++) this.screen[y] = this._blankRow();
+    } else if (mode === 1) {
+      for (let x = 0; x <= this.cx && x < this.cols; x++) this.screen[this.cy][x] = blank();
+      for (let y = 0; y < this.cy; y++) this.screen[y] = this._blankRow();
+    } else {
+      this.screen = this._blankScreen(this.rows);
+      if (mode === 3) this.scrollback = [];
+    }
+  }
+
+  _eraseLine(mode) {
+    const row = this.screen[this.cy];
+    if (mode === 0) { for (let x = this.cx; x < this.cols; x++) row[x] = blankCell(); }
+    else if (mode === 1) { for (let x = 0; x <= this.cx && x < this.cols; x++) row[x] = blankCell(); }
+    else { this.screen[this.cy] = this._blankRow(); }
+  }
+
+  _eraseChars(n) {
+    const row = this.screen[this.cy];
+    for (let i = 0; i < n && this.cx + i < this.cols; i++) row[this.cx + i] = blankCell();
+  }
+
+  _deleteChars(n) {
+    const row = this.screen[this.cy];
+    row.splice(this.cx, n);
+    while (row.length < this.cols) row.push(blankCell());
+  }
+
+  _insertChars(n) {
+    const row = this.screen[this.cy];
+    for (let i = 0; i < n; i++) row.splice(this.cx, 0, blankCell());
+    row.length = this.cols;
+  }
+
+  _privMode(params, on) {
+    for (const code of params) {
+      if (code === 1049 || code === 47 || code === 1047) {
+        if (on && !this.alt) {
+          this.alt = { screen: this.screen, cx: this.cx, cy: this.cy };
+          this.screen = this._blankScreen(this.rows);
+          this.cx = 0; this.cy = 0;
+        } else if (!on && this.alt) {
+          this.screen = this.alt.screen;
+          this.cx = this.alt.cx; this.cy = this.alt.cy;
+          this.alt = null;
+        }
+      }
+      // Other private modes (cursor visibility 25, bracketed paste 2004, …)
+      // don't affect our text rendering, so they are ignored.
+    }
+  }
+
+  _sgr(params) {
+    if (params.length === 0) params = [0];
+    for (let i = 0; i < params.length; i++) {
+      const n = params[i];
+      if (n === 0) { this.pen = blankCell(); }
+      else if (n === 1) this.pen.bold = true;
+      else if (n === 22) this.pen.bold = false;
+      else if (n === 4) this.pen.ul = true;
+      else if (n === 24) this.pen.ul = false;
+      else if (n === 7) this.pen.inv = true;
+      else if (n === 27) this.pen.inv = false;
+      else if (n >= 30 && n <= 37) this.pen.fg = ANSI16[n - 30];
+      else if (n === 39) this.pen.fg = null;
+      else if (n >= 40 && n <= 47) this.pen.bg = ANSI16[n - 40];
+      else if (n === 49) this.pen.bg = null;
+      else if (n >= 90 && n <= 97) this.pen.fg = ANSI16[n - 90 + 8];
+      else if (n >= 100 && n <= 107) this.pen.bg = ANSI16[n - 100 + 8];
+      else if (n === 38 || n === 48) {
+        const target = n === 38 ? "fg" : "bg";
+        if (params[i + 1] === 5) { this.pen[target] = color256(params[i + 2] || 0); i += 2; }
+        else if (params[i + 1] === 2) {
+          this.pen[target] = "rgb(" + (params[i + 2] || 0) + "," + (params[i + 3] || 0) + "," + (params[i + 4] || 0) + ")";
+          i += 4;
+        }
+      }
+    }
+  }
+
+  // renderHTML returns the screen (scrollback + live rows) as HTML, grouping
+  // runs of same-styled cells into spans. The cursor cell is highlighted when
+  // showCursor is set and we're not in the alternate buffer.
+  renderHTML(showCursor) {
+    const out = [];
+    for (const row of this.scrollback) out.push(this._rowHTML(row, -1, false));
+    for (let y = 0; y < this.screen.length; y++) {
+      const curCol = (showCursor && y === this.cy) ? this.cx : -1;
+      out.push(this._rowHTML(this.screen[y], curCol, true));
+    }
+    return out.join("\n");
+  }
+
+  _rowHTML(row, curCol, live) {
+    // Find the last cell worth rendering (non-blank or styled), but always keep
+    // the cursor cell visible.
+    let last = -1;
+    for (let x = 0; x < row.length; x++) {
+      const c = row[x];
+      if (c.ch !== " " || c.bg || c.inv || x === curCol) last = x;
+    }
+    if (last < 0) return "";
+    let html = "";
+    let run = null, runStyle = "", runCur = false;
+    const flush = () => {
+      if (run === null) return;
+      const tag = runCur ? '<span class="cur"' : "<span";
+      html += tag + (runStyle ? ' style="' + runStyle + '"' : "") + ">" + run + "</span>";
+      run = null;
+    };
+    for (let x = 0; x <= last; x++) {
+      const c = row[x];
+      const style = this._cellStyle(c);
+      const isCur = x === curCol;
+      if (run === null || style !== runStyle || isCur || runCur) {
+        flush();
+        run = ""; runStyle = style; runCur = isCur;
+      }
+      run += escTerm(c.ch === "" ? " " : c.ch);
+    }
+    flush();
+    return html;
+  }
+
+  _cellStyle(c) {
+    let fg = c.fg, bg = c.bg;
+    if (c.inv) { const t = fg || TERM_DEFAULT_FG; fg = bg || TERM_DEFAULT_BG; bg = t; }
+    const parts = [];
+    if (fg) parts.push("color:" + fg);
+    if (bg) parts.push("background:" + bg);
+    if (c.bold) parts.push("font-weight:700");
+    if (c.ul) parts.push("text-decoration:underline");
+    return parts.join(";");
+  }
+}
+
+function escTerm(s) {
+  return s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+}
+
+// ── one terminal pane: DOM + WebSocket + emulator ───────────────────────────
+class Pane {
+  constructor(workspace, n) {
+    this.ws = workspace;
+    this.emu = new TermEmu(80, 24);
+    this.dec = new TextDecoder();
+    this.socket = null;
+    this.alive = false;
+    this.dirty = false;
+    this.lastCols = 0; this.lastRows = 0;
+
+    const el = document.createElement("div");
+    el.className = "pane";
+    el.innerHTML =
+      '<div class="pane-head">' +
+        '<span class="pane-dot"></span>' +
+        '<input class="pane-name" value="shell ' + n + '" spellcheck="false" aria-label="Pane name">' +
+        '<button type="button" class="pane-x" title="Close pane">✕</button>' +
+      "</div>" +
+      '<div class="pane-screen" tabindex="0" aria-label="Terminal output"></div>';
+    this.el = el;
+    this.screenEl = el.querySelector(".pane-screen");
+    this.dotEl = el.querySelector(".pane-dot");
+
+    el.querySelector(".pane-x").addEventListener("click", () => this.ws.remove(this));
+    el.querySelector(".pane-name").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); this.screenEl.focus(); }
+    });
+    this.screenEl.addEventListener("keydown", (e) => this._onKey(e));
+    this.screenEl.addEventListener("paste", (e) => {
+      e.preventDefault();
+      const t = (e.clipboardData || window.clipboardData).getData("text");
+      if (t) this._sendInput(t);
+    });
+    this.screenEl.addEventListener("focus", () => { this.ws.setFocused(this); this.render(); });
+    this.screenEl.addEventListener("blur", () => this.render());
+    el.addEventListener("mousedown", () => this.ws.setFocused(this));
+
+    this.ro = new ResizeObserver(() => this.fit());
+    this.ro.observe(this.screenEl);
+
+    this.connect();
+  }
+
+  connect() {
+    if (!SERVED) {
+      this.emu.write("\x1b[33mOpen this page via `./run.sh --web` to use the terminal.\x1b[0m\r\n");
+      this.render();
+      this._setDot("dead");
+      return;
+    }
+    const proto = location.protocol === "https:" ? "wss:" : "ws:";
+    let sock;
+    try { sock = new WebSocket(proto + "//" + location.host + "/api/terminal"); }
+    catch (e) { this._fail(e.message); return; }
+    sock.binaryType = "arraybuffer";
+    this.socket = sock;
+    sock.onopen = () => { this.alive = true; this._setDot("live"); this.fit(true); this.screenEl.focus(); };
+    sock.onmessage = (ev) => {
+      if (typeof ev.data === "string") this.emu.write(ev.data);
+      else this.emu.write(this.dec.decode(new Uint8Array(ev.data), { stream: true }));
+      this.render();
+    };
+    sock.onclose = () => { this.alive = false; this._setDot("dead"); this.emu.write("\r\n\x1b[90m[session ended]\x1b[0m\r\n"); this.render(); };
+    sock.onerror = () => { if (!this.alive) this._fail("could not connect"); };
+  }
+
+  _fail(msg) {
+    this.alive = false;
+    this._setDot("dead");
+    this.emu.write("\x1b[31m[" + msg + "]\x1b[0m\r\n");
+    this.render();
+  }
+
+  _setDot(cls) { this.dotEl.className = "pane-dot" + (cls ? " " + cls : ""); }
+
+  // fit measures the pane, resizes the emulator, and tells the server, so the
+  // shell wraps lines to the visible width.
+  fit(force) {
+    const dims = this._measure();
+    if (!dims) return;
+    const { cols, rows } = dims;
+    if (!force && cols === this.lastCols && rows === this.lastRows) return;
+    this.lastCols = cols; this.lastRows = rows;
+    this.emu.resize(cols, rows);
+    this.render();
+    if (this.socket && this.alive) {
+      try { this.socket.send(JSON.stringify({ type: "resize", cols, rows })); } catch {}
+    }
+  }
+
+  _measure() {
+    const cw = this.ws.charW, chh = this.ws.charH;
+    if (!cw || !chh) return null;
+    const style = getComputedStyle(this.screenEl);
+    const padX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+    const padY = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+    const w = this.screenEl.clientWidth - padX;
+    const h = this.screenEl.clientHeight - padY;
+    if (w <= 0 || h <= 0) return null;
+    return { cols: Math.max(2, Math.floor(w / cw)), rows: Math.max(1, Math.floor(h / chh)) };
+  }
+
+  render() {
+    if (this.dirty) return;
+    this.dirty = true;
+    requestAnimationFrame(() => {
+      this.dirty = false;
+      const atBottom = this.screenEl.scrollHeight - this.screenEl.clientHeight - this.screenEl.scrollTop < 20;
+      const focused = document.activeElement === this.screenEl;
+      this.screenEl.innerHTML = this.emu.renderHTML(focused && this.alive);
+      if (atBottom) this.screenEl.scrollTop = this.screenEl.scrollHeight;
+    });
+  }
+
+  _onKey(e) {
+    if (e.key === "Tab" && e.shiftKey) return; // let the browser move focus out
+    const bytes = keyToBytes(e);
+    if (bytes === null) return;
+    e.preventDefault();
+    e.stopPropagation();
+    this._sendInput(bytes);
+  }
+
+  _sendInput(data) {
+    if (this.socket && this.alive) {
+      try { this.socket.send(JSON.stringify({ type: "input", data })); } catch {}
+    }
+  }
+
+  focus() { this.screenEl.focus(); }
+
+  destroy() {
+    this.ro.disconnect();
+    if (this.socket) { try { this.socket.close(); } catch {} }
+    this.el.remove();
+  }
+}
+
+// keyToBytes translates a keydown into the bytes a terminal expects, or null to
+// let the browser handle the key normally.
+function keyToBytes(e) {
+  const k = e.key;
+  if (e.ctrlKey && !e.altKey && !e.metaKey) {
+    if (k.length === 1 && k >= "a" && k <= "z") return String.fromCharCode(k.charCodeAt(0) - 96);
+    if (k.length === 1 && k >= "A" && k <= "Z") return String.fromCharCode(k.charCodeAt(0) - 64);
+    const map = { " ": "\x00", "[": "\x1b", "]": "\x1d", "\\": "\x1c", "^": "\x1e", "_": "\x1f" };
+    if (map[k] !== undefined) return map[k];
+  }
+  if (e.altKey && !e.ctrlKey && !e.metaKey && k.length === 1) return "\x1b" + k;
+  switch (k) {
+    case "Enter": return "\r";
+    case "Backspace": return "\x7f";
+    case "Tab": return "\t";
+    case "Escape": return "\x1b";
+    case "ArrowUp": return "\x1b[A";
+    case "ArrowDown": return "\x1b[B";
+    case "ArrowRight": return "\x1b[C";
+    case "ArrowLeft": return "\x1b[D";
+    case "Home": return "\x1b[H";
+    case "End": return "\x1b[F";
+    case "PageUp": return "\x1b[5~";
+    case "PageDown": return "\x1b[6~";
+    case "Delete": return "\x1b[3~";
+    case "Insert": return "\x1b[2~";
+  }
+  if (e.metaKey) return null; // leave browser/OS shortcuts alone
+  if (k.length === 1) return k;
+  return null;
+}
+
+// ── the workspace: a grid of panes with add/remove and layout controls ──────
+const TermWorkspace = {
+  panes: [],
+  focusedPane: null,
+  cols: 2,
+  fontPx: 13,
+  charW: 0, charH: 0,
+  seq: 0,
+  started: false,
+
+  view() { return document.getElementById("termview"); },
+  panesEl() { return document.getElementById("termpanes"); },
+  visible() { return !this.view().hidden; },
+
+  open() {
+    document.querySelector(".layout").style.display = "none";
+    this.view().hidden = false;
+    document.getElementById("termtoggle").setAttribute("aria-pressed", "true");
+    if (!this.started) { this.started = true; this.setCols(this.cols); this.add(); }
+    // Re-measure now that the panes are visible (they had zero size while hidden).
+    this.measureCell();
+    for (const p of this.panes) p.fit(true);
+    if (this.focusedPane) this.focusedPane.focus();
+    else if (this.panes.length) this.panes[0].focus();
+  },
+
+  close() {
+    this.view().hidden = true;
+    document.querySelector(".layout").style.display = "";
+    document.getElementById("termtoggle").setAttribute("aria-pressed", "false");
+  },
+
+  toggle() { this.visible() ? this.close() : this.open(); },
+
+  // measureCell computes the pixel size of one character cell for the current
+  // font size, used to derive each pane's cols/rows.
+  measureCell() {
+    const ruler = document.createElement("span");
+    ruler.style.cssText = "position:absolute;visibility:hidden;white-space:pre;font:" + this.fontPx + "px/1.35 var(--mono)";
+    ruler.textContent = "MMMMMMMMMMMMMMMMMMMM"; // 20 chars
+    this.panesEl().appendChild(ruler);
+    const rect = ruler.getBoundingClientRect();
+    ruler.remove();
+    this.charW = rect.width / 20;
+    this.charH = this.fontPx * 1.35;
+  },
+
+  add() {
+    const pane = new Pane(this, ++this.seq);
+    this.panes.push(pane);
+    this.panesEl().appendChild(pane.el);
+    this._syncEmpty();
+    this.measureCell();
+    pane.fit(true);
+    this.setFocused(pane);
+    pane.focus();
+    return pane;
+  },
+
+  remove(pane) {
+    const i = this.panes.indexOf(pane);
+    if (i < 0) return;
+    pane.destroy();
+    this.panes.splice(i, 1);
+    if (this.focusedPane === pane) this.focusedPane = null;
+    this._syncEmpty();
+    if (this.panes.length) (this.panes[Math.min(i, this.panes.length - 1)]).focus();
+  },
+
+  _syncEmpty() {
+    const host = this.panesEl();
+    let empty = host.querySelector(".term-empty");
+    if (!this.panes.length) {
+      if (!empty) {
+        empty = document.createElement("div");
+        empty.className = "term-empty";
+        empty.textContent = "No terminals open. Press ＋ Split to start a shell.";
+        host.appendChild(empty);
+      }
+    } else if (empty) {
+      empty.remove();
+    }
+  },
+
+  setFocused(pane) {
+    if (this.focusedPane === pane) return;
+    this.focusedPane = pane;
+    for (const p of this.panes) p.el.classList.toggle("focused", p === pane);
+  },
+
+  setCols(n) {
+    this.cols = n;
+    this.panesEl().style.setProperty("--cols", n);
+    for (const b of document.querySelectorAll(".colbtn")) b.classList.toggle("active", +b.dataset.cols === n);
+    // Sizes changed; ResizeObserver will fire fit() for each pane.
+  },
+
+  setFont(px) {
+    this.fontPx = Math.max(9, Math.min(22, px));
+    for (const p of this.panes) p.screenEl.style.fontSize = this.fontPx + "px";
+    this.measureCell();
+    for (const p of this.panes) p.fit(true);
+  },
+};
+
+// Wire the workspace controls.
+document.getElementById("termtoggle").addEventListener("click", () => TermWorkspace.toggle());
+document.getElementById("term-close").addEventListener("click", () => TermWorkspace.close());
+document.getElementById("term-add").addEventListener("click", () => TermWorkspace.add());
+document.getElementById("term-font-up").addEventListener("click", () => TermWorkspace.setFont(TermWorkspace.fontPx + 1));
+document.getElementById("term-font-dn").addEventListener("click", () => TermWorkspace.setFont(TermWorkspace.fontPx - 1));
+for (const b of document.querySelectorAll(".colbtn")) {
+  b.addEventListener("click", () => TermWorkspace.setCols(+b.dataset.cols));
+}
+
 // ── boot ────────────────────────────────────────────────────────────────────
 // parseHash splits #<mode>/<slug> (slug optional, mode optional for back-compat).
 function parseHash() {
@@ -1259,6 +2073,15 @@ if (boot.key && MODE_BY_KEY.has(boot.key)) {
   bySlug = mode.bySlug;
   activeProject = mode.activeProject;
 }
+// Wire the persistent output panel once. The console element is never
+// recreated, so output persists across tool and catalog switches until the
+// user clears it here.
+document.getElementById("clear").addEventListener("click", () => {
+  consoleEl().replaceChildren();
+  setConsoleHint();
+});
+setConsoleHint();
+
 renderModeToggle();
 applyFilter();
 const bootTool = (boot.slug && bySlug.get(boot.slug)) || shown[0] || CATALOG[0] || null;

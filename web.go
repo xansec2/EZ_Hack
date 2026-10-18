@@ -111,6 +111,9 @@ func runWeb(port int, open bool) error {
 	})
 	mux.HandleFunc("POST /api/projects", handleProjects)
 	mux.HandleFunc("POST /api/run", handleRun)
+	// Interactive shell(s) for the split-screen terminal workspace. Each socket
+	// is one PTY-backed shell; the page opens one per pane.
+	mux.HandleFunc("GET /api/terminal", handleTerminal)
 
 	url := fmt.Sprintf("http://localhost:%d/", port)
 	fmt.Printf("%s → %s   (ctrl+c to stop)\n", webTitle, url)
