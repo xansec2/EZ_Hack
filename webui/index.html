@@ -441,14 +441,40 @@
   .termtoggle[aria-pressed="true"] { background: #fff; color: var(--banner); border-color: #fff; opacity: 1; }
 
   /* ── terminal workspace ───────────────────────────────────────────────── */
+  /* The terminal docks below the command builder rather than replacing it, so
+     both are usable at once. #termview keeps a fixed (draggable) height while
+     .layout flexes to fill the rest. */
   #termview {
-    flex: 1;
-    min-height: 0;
+    flex: none;
+    height: var(--term-h, 42vh);
+    min-height: 120px;
     display: flex;
     flex-direction: column;
     background: var(--bg);
+    border-top: 2px solid var(--border);
   }
   #termview[hidden] { display: none; }
+
+  /* Draggable divider between the builder and the terminal dock. */
+  .termgrip {
+    flex: none;
+    height: 7px;
+    cursor: row-resize;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: none;
+  }
+  .termgrip::before {
+    content: "";
+    width: 46px;
+    height: 3px;
+    border-radius: 3px;
+    background: var(--border);
+  }
+  .termgrip:hover::before { background: var(--accent); }
   .termbar {
     flex: none;
     display: flex;
@@ -593,10 +619,12 @@
 </div>
 
 <!-- Interactive split-screen terminal workspace. Hidden until toggled; when
-     shown it replaces the catalog layout. Each pane is an independent shell
-     (PTY) served from /api/terminal, so you can run commands side by side and
+     shown it docks beneath the command builder (both stay visible) and can be
+     resized by dragging the grip. Each pane is an independent shell (PTY)
+     served from /api/terminal, so you can run commands side by side and
      compare their output. -->
 <section id="termview" hidden aria-label="Terminal workspace">
+  <div class="termgrip" id="termgrip" role="separator" aria-orientation="horizontal" aria-label="Resize terminal" title="Drag to resize"></div>
   <div class="termbar">
     <span class="termtitle">Terminals</span>
     <button type="button" class="tbtn" id="term-add" title="Open another shell (Ctrl+Shift+T)">＋ Split</button>
@@ -1401,12 +1429,12 @@ async function refreshProjects() {
 // ── keyboard ────────────────────────────────────────────────────────────────
 const typing = (e) => /^(input|select|textarea)$/i.test(e.target.tagName);
 document.addEventListener("keydown", (e) => {
-  // While the terminal workspace is open it owns the keyboard (each pane sends
-  // keystrokes to its shell). Only its own chord — Ctrl+Shift+T to split —
-  // applies here; the catalog shortcuts (j/k/enter/…) stay out of the way.
+  // The terminal dock can be open alongside the builder. Ctrl+Shift+T splits a
+  // new shell whenever it's open. When focus is inside the dock the pane owns
+  // the keyboard; otherwise the catalog shortcuts (j/k/enter/…) still apply.
   if (TermWorkspace.visible()) {
-    if (e.ctrlKey && e.shiftKey && (e.key === "T" || e.key === "t")) { e.preventDefault(); TermWorkspace.add(); }
-    return;
+    if (e.ctrlKey && e.shiftKey && (e.key === "T" || e.key === "t")) { e.preventDefault(); TermWorkspace.add(); return; }
+    if (e.target.closest && e.target.closest("#termview")) return;
   }
   // While a dialog is open it owns the keyboard; only Escape (close) applies.
   if (!modalEl.hidden) { if (e.key === "Escape") { e.preventDefault(); closeModal(); } return; }
@@ -1954,7 +1982,7 @@ const TermWorkspace = {
   visible() { return !this.view().hidden; },
 
   open() {
-    document.querySelector(".layout").style.display = "none";
+    // Dock below the builder instead of replacing it, so both stay visible.
     this.view().hidden = false;
     document.getElementById("termtoggle").setAttribute("aria-pressed", "true");
     if (!this.started) { this.started = true; this.setCols(this.cols); this.add(); }
@@ -1967,7 +1995,6 @@ const TermWorkspace = {
 
   close() {
     this.view().hidden = true;
-    document.querySelector(".layout").style.display = "";
     document.getElementById("termtoggle").setAttribute("aria-pressed", "false");
   },
 
@@ -2053,6 +2080,33 @@ document.getElementById("term-font-dn").addEventListener("click", () => TermWork
 for (const b of document.querySelectorAll(".colbtn")) {
   b.addEventListener("click", () => TermWorkspace.setCols(+b.dataset.cols));
 }
+
+// Drag the grip to resize the terminal dock. Each pane's ResizeObserver fits
+// its shell automatically as the height changes.
+(function () {
+  const grip = document.getElementById("termgrip");
+  const view = document.getElementById("termview");
+  if (!grip || !view) return;
+  grip.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    try { grip.setPointerCapture(e.pointerId); } catch {}
+    const startY = e.clientY;
+    const startH = view.getBoundingClientRect().height;
+    const onMove = (ev) => {
+      const dy = startY - ev.clientY;            // drag up → taller
+      const max = window.innerHeight - 140;      // leave room for the builder
+      const h = Math.max(120, Math.min(max, startH + dy));
+      view.style.height = h + "px";
+    };
+    const onUp = () => {
+      try { grip.releasePointerCapture(e.pointerId); } catch {}
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  });
+})();
 
 // ── boot ────────────────────────────────────────────────────────────────────
 // parseHash splits #<mode>/<slug> (slug optional, mode optional for back-compat).
