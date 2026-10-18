@@ -119,15 +119,25 @@ draws a per-project, Obsidian-style canvas of the whole engagement and **builds
 itself from command output across every catalog**. Whenever you Run a tool, its
 output is parsed and the important parts are added as linked nodes:
 
-- **nmap** (setup mode) — `Nmap scan report for …` and `PORT open SERVICE` lines
-  become **host** and **port** nodes
-- **web** — URLs become **host → endpoint → param** nodes; bare subdomain
-  listings become **subdomain** nodes
+- **recon / probe** — `subfinder`, `amass`, `dnsx` FQDNs become **host /
+  subdomain** nodes; `naabu` `host:port` and `nmap` `PORT open SERVICE` lines
+  become **port** nodes; `nmap` `Nmap scan report for …` adds the host
+- **crawl / content discovery** — URLs from `httpx`, `katana`, `gau`,
+  `waybackurls` become **host → endpoint → param** nodes; `gobuster` / `ffuf` /
+  dirsearch path+status lines become **endpoint** nodes on the target host;
+  `arjun` discovered parameters become **param** nodes
+- **tech** — `httpx -tech-detect` / Wappalyzer `[nginx, PHP, WordPress]`
+  brackets become **tech** nodes on the host
 - **AD** — netexec/crackmapexec protocol lines become **host** + **domain**
   nodes, with **user**, **cred** (valid logons / `Pwn3d!`) and **share**
   (READ/WRITE) nodes from enumeration
-- **findings** — nuclei severities (`[high]`/`[critical]`), nmap `VULNERABLE`,
-  and `[POC]` lines become **finding** nodes linked to the host they hit
+- **findings / attack vectors** — nuclei severities (`[high]`/`[critical]`),
+  `sqlmap` vulnerable parameters, `dalfox`/`[POC]` lines, `nikto` vuln notes and
+  nmap `VULNERABLE` become **finding** nodes linked to the host/param they hit
+
+Output is run through an ANSI-colour strip first, so colourised tools (`ffuf`,
+`gobuster`, `nuclei`, …) map correctly, and path-only output is attached to the
+target pulled from the command's `-u`/`-h`/URL so nothing floats free.
 
 Everything is laid out automatically but **fully draggable**; drag the
 background to pan and scroll to zoom. **⤢ Fit** reframes the graph, **＋ Node**

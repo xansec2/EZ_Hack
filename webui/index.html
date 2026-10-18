@@ -2622,6 +2622,10 @@ const AppMap = {
     const data = this.load(project);
     const before = data.nodes.length;
     const CAP = 400;
+    // Strip ANSI colour codes first — ffuf, gobuster, nuclei etc. run colourised
+    // by default, and the escape sequences otherwise break every line match.
+    const stripAnsi = (s) => String(s).replace(/\u001b\[[0-9;?]*[ -\/]*[@-~]/g, "");
+    lines = (lines || []).map(stripAnsi);
     const root = this.rootFor(project, cmd);
     const add = (id, props) => {
       let n = data.nodes.find((x) => x.id === id);
@@ -2651,6 +2655,31 @@ const AppMap = {
       return n.id;
     };
 
+    // Target taken from the command itself, so path-only output (gobuster, ffuf,
+    // nikto, sqlmap, arjun — which print paths/params, not full URLs) attaches to
+    // the right host instead of floating free.
+    let cmdBase = null; // { origin, host }
+    {
+      const mu = cmd.match(/(?:^|\s)(?:-u|--url|-h|--host|--targets?)[=\s]+['"]?([^\s'"]+)/i)
+              || cmd.match(/https?:\/\/[^\s'"]+/);
+      let v = mu ? (mu[1] || mu[0]) : "";
+      if (v) { try { const uu = new URL(/^https?:\/\//i.test(v) ? v : "http://" + v); cmdBase = { origin: uu.origin, host: uu.hostname.toLowerCase() }; } catch {} }
+    }
+    const baseHostId = () => (cmdBase ? ensureHost(cmdBase.host) : rootId);
+    let epCount = 0, paramCount = 0;
+    const addEndpoint = (origin, path, hostId, subHost) => {
+      if (epCount >= 150) return null;
+      const en = add("ep:" + origin + path, { type: "endpoint", label: path, sub: subHost });
+      if (en) { epCount++; link(hostId, en.id); }
+      return en;
+    };
+    const addParam = (origin, path, key, epId, where) => {
+      if (paramCount >= 120) return null;
+      const pn = add("param:" + origin + path + "#" + key, { type: "param", label: key, sub: where });
+      if (pn) { paramCount++; link(epId || baseHostId(), pn.id); }
+      return pn;
+    };
+
     // ── nmap: scan report (host) + PORT/STATE/SERVICE lines ───────────────────
     let curHost = "";
     for (const raw of lines) {
@@ -2674,37 +2703,122 @@ const AppMap = {
       }
     }
 
-    // ── web: URLs → host + endpoint + params ──────────────────────────────────
+    // ── web: full URLs → host + endpoint + params (httpx, katana, gau, nuclei…)
     const text = lines.join("\n");
     const urlRe = /\bhttps?:\/\/[^\s"'<>)\]]+/gi;
     const seen = new Set();
-    let epCount = 0, um;
+    let um;
     while ((um = urlRe.exec(text))) {
       const u = um[0].replace(/[.,;]+$/, "");
       if (seen.has(u)) continue;
       seen.add(u);
       let url; try { url = new URL(u); } catch { continue; }
       const hid = ensureHost(url.hostname.toLowerCase());
-      if (epCount >= 60) continue;
       const path = url.pathname || "/";
-      const en = add("ep:" + url.origin + path, { type: "endpoint", label: path, sub: url.hostname.toLowerCase() });
-      epCount++;
+      const en = addEndpoint(url.origin, path, hid, url.hostname.toLowerCase());
       if (en) {
-        link(hid, en.id);
         let pc = 0;
         url.searchParams.forEach((v, k) => {
-          if (pc++ > 6) return;
-          const pn = add("param:" + url.hostname.toLowerCase() + path + "#" + k, { type: "param", label: k, sub: "on " + path });
-          if (pn) link(en.id, pn.id);
+          if (pc++ > 8) return;
+          addParam(url.origin, path, k, en.id, "on " + path);
         });
       }
     }
 
-    // ── web recon: bare subdomain listings ────────────────────────────────────
-    if (isDomainRoot) {
-      for (const raw of lines) {
-        const t = raw.trim().toLowerCase().replace(/^\*\./, "");
-        if (/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/.test(t) && t.endsWith("." + String(root).toLowerCase()) && t !== String(root).toLowerCase()) ensureHost(t);
+    // ── per-line web/recon parsers ────────────────────────────────────────────
+    const techOf = (tok) => tok.trim().replace(/:[\d.]+$/, "");
+    const KNOWN_TECH = /^(nginx|apache|iis|tomcat|jetty|express|php|asp\.net|aspnet|node\.js|react|angular|vue|wordpress|drupal|joomla|laravel|django|flask|rails|cloudflare|akamai|fastly|varnish|openssl|jquery|bootstrap|litespeed|gunicorn|werkzeug|kestrel|envoy|haproxy|windows|ubuntu|debian|centos|google|amazon|aws|azure)/i;
+    for (const raw of lines) {
+      const t = raw.trim();
+      if (!t) continue;
+      const low = t.toLowerCase().replace(/^\*\./, "");
+
+      // bare subdomain / FQDN listing (subfinder, amass, assetfinder, dnsx)
+      if (/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/.test(low)) { ensureHost(low); continue; }
+
+      // host:port (naabu)  →  host + port node
+      let m = t.match(/^((?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}|\d{1,3}(?:\.\d{1,3}){3}):(\d{1,5})$/i);
+      if (m) {
+        const hid = ensureHost(m[1].toLowerCase());
+        const pn = add("port:" + m[1].toLowerCase() + ":" + m[2] + "/tcp", { type: "port", label: m[2] + "/tcp", sub: "naabu" });
+        if (pn) link(hid || rootId, pn.id);
+        continue;
+      }
+
+      // dnsx -resp:  sub.example.com [A] 1.2.3.4   /   [CNAME] foo.cdn.net
+      m = t.match(/^(\S+?)\s+\[(A|AAAA|CNAME)\]\s+(\S+)/i);
+      if (m && /[a-z]/i.test(m[1])) {
+        const hid = ensureHost(this.hostOf(m[1]));
+        if (/cname/i.test(m[2]) && hid) { const hn = data.nodes.find((n) => n.id === hid); if (hn && !hn.sub) hn.sub = "CNAME → " + m[3]; }
+        continue;
+      }
+
+      // path + status (gobuster dir, ffuf, dirsearch, feroxbuster)
+      m = t.match(/^(\S+)\s+[\[(]Status:\s*(\d{3})/i) || t.match(/^(?:\d{3}|\[\d+:\d+:\d+\]\s+\d{3})\s+\S*\s+(\/\S+)/);
+      if (m && cmdBase) {
+        let tok = m[1] || m[2];
+        if (tok && !/^\d{3}$/.test(tok)) {
+          let p = tok.startsWith("http") ? (new URL(tok)).pathname : (tok.startsWith("/") ? tok : "/" + tok);
+          p = p.split("?")[0];
+          const st = (t.match(/Status:\s*(\d{3})/i) || t.match(/\b(\d{3})\b/) || [])[1] || "";
+          const en = addEndpoint(cmdBase.origin, p, baseHostId(), cmdBase.host + (st ? " · " + st : ""));
+          if (en && st) { const n = data.nodes.find((x) => x.id === en.id); if (n) n.sub = cmdBase.host + " · " + st; }
+          continue;
+        }
+      }
+
+      // arjun: discovered parameters
+      m = t.match(/parameters?\s+found\s*:?\s*(.+)$/i) || t.match(/valid parameter\s*:?\s*['"]?([a-z0-9_\-\[\]]+)/i);
+      if (m && cmdBase) {
+        const names = m[1].split(/[,\s]+/).map((s) => s.replace(/['"]/g, "")).filter((s) => /^[a-z0-9_\-\[\]]{1,40}$/i.test(s)).slice(0, 12);
+        const path = (() => { try { return (new URL(cmdBase.origin + "/")).pathname; } catch { return "/"; } })();
+        for (const k of names) addParam(cmdBase.origin, path, k, null, "arjun");
+        if (names.length) continue;
+      }
+
+      // sqlmap: vulnerable parameter  →  param + finding
+      m = t.match(/(?:GET|POST|Cookie|URI)?\s*parameter\s+'?([a-z0-9_\-\[\]]+)'?\s+is vulnerable/i)
+       || t.match(/^Parameter:\s*([a-z0-9_\-\[\]]+)\s*\(/i);
+      if (m) {
+        const k = m[1];
+        const path = cmdBase ? (() => { try { return (new URL(cmdBase.origin + "/")).pathname; } catch { return "/"; } })() : "/";
+        const pn = addParam(cmdBase ? cmdBase.origin : "sqlmap", path, k, null, "sqlmap");
+        if (/is vulnerable/i.test(t)) {
+          const fn = add("find:" + this.hash("sqli:" + k), { type: "finding", label: "SQL injection · param " + k, sub: "sqlmap · high" });
+          if (fn) link(pn ? pn.id : baseHostId(), fn.id);
+        }
+        continue;
+      }
+
+      // nikto: '+ /path: note'  →  endpoint (+ finding if it reads vuln-ish)
+      m = t.match(/^\+\s+(\/\S*)\s*:\s*(.+)$/);
+      if (m && cmdBase) {
+        const en = addEndpoint(cmdBase.origin, m[1].split("?")[0], baseHostId(), "nikto");
+        if (en && /(vulnerab|outdated|XSS|CVE|injection|disclosure|default|backup|traversal)/i.test(m[2])) {
+          const fn = add("find:" + this.hash(t), { type: "finding", label: (m[1] + ": " + m[2]).slice(0, 72), sub: "nikto" });
+          if (fn) link(en.id, fn.id);
+        }
+        continue;
+      }
+
+      // httpx -tech-detect / whatweb: technologies in [brackets] on a URL line
+      if (/\[.*\]/.test(t) && (cmdBase || /https?:\/\//i.test(t))) {
+        const host = cmdBase ? cmdBase.host : this.hostOf((t.match(/https?:\/\/\S+/) || [""])[0]);
+        const hid = host ? ensureHost(host) : rootId;
+        const groups = t.match(/\[([^\]]+)\]/g) || [];
+        for (const g of groups) {
+          const inner = g.slice(1, -1);
+          if (/^\d+$/.test(inner)) continue; // status code
+          const toks = inner.split(",").map((s) => s.trim()).filter(Boolean);
+          const isTech = toks.length > 1 || (toks[0] && KNOWN_TECH.test(toks[0]));
+          if (!isTech) continue;
+          for (const tk of toks.slice(0, 8)) {
+            const name = techOf(tk);
+            if (!name || name.length > 28 || /\s{2,}/.test(name)) continue;
+            const tn = add("tech:" + (host || "x") + ":" + name.toLowerCase(), { type: "tech", label: name, sub: host || "tech" });
+            if (tn) link(hid, tn.id);
+          }
+        }
       }
     }
 
@@ -2803,7 +2917,7 @@ const AppMap = {
       if (none) {
         empty.innerHTML =
           '<div class="big">No map yet for this project.</div>' +
-          "<div>Run a command from any catalog with this project active — nmap hosts &amp; ports, web endpoints &amp; params, and AD users, creds &amp; shares appear here as a canvas you can rearrange.</div>" +
+          "<div>Run a command from any catalog with this project active — hosts &amp; subdomains, ports, endpoints &amp; params, tech, and findings (sqlmap / nuclei / nikto / dalfox) appear here as a canvas of attack vectors you can rearrange.</div>" +
           "<div>Want to see what that looks like? Click <b>★ Example</b> above.</div>";
       }
     }
