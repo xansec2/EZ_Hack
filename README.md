@@ -112,6 +112,34 @@ A few things to know:
   alternate-screen buffer; heavy full-screen TUIs (e.g. `vim`, `htop`) mostly
   work but aren't pixel-perfect.
 
+### Application Map (Obsidian-style canvas)
+
+The **Application Map** tab (top-left toggle, alongside web / AD / Linux / …)
+draws a per-project, Obsidian-style canvas of the whole engagement and **builds
+itself from command output across every catalog**. Whenever you Run a tool, its
+output is parsed and the important parts are added as linked nodes:
+
+- **nmap** (setup mode) — `Nmap scan report for …` and `PORT open SERVICE` lines
+  become **host** and **port** nodes
+- **web** — URLs become **host → endpoint → param** nodes; bare subdomain
+  listings become **subdomain** nodes
+- **AD** — netexec/crackmapexec protocol lines become **host** + **domain**
+  nodes, with **user**, **cred** (valid logons / `Pwn3d!`) and **share**
+  (READ/WRITE) nodes from enumeration
+- **findings** — nuclei severities (`[high]`/`[critical]`), nmap `VULNERABLE`,
+  and `[POC]` lines become **finding** nodes linked to the host they hit
+
+Everything is laid out automatically but **fully draggable**; drag the
+background to pan and scroll to zoom. **⤢ Fit** reframes the graph, **＋ Node**
+drops a free note (double-click to rename, hover + **✕** to delete).
+
+It is **specific to a project** — pick one in the tab's own dropdown; each
+project stores its own map (in the browser, via `localStorage`), so one map
+accumulates everything you find on that engagement regardless of which catalog
+you ran the tool from. A seeded **★ Example map** (a small AD + web + nmap
+engagement) shows what a populated map looks like; **🗑 Delete map** removes the
+selected map (the example included), and **★ Example** reloads/resets it.
+
 ## Tools included
 
 Curated toward **bug bounty** — tools that find leads on their own and

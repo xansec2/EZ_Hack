@@ -614,6 +614,82 @@
   .pane-screen .cur { background: #c0caf5; color: #16161e; }
   .term-empty { padding: 24px; color: var(--dim); font: 13px var(--sans); grid-column: 1 / -1; }
 
+  /* ── application map (Obsidian-style canvas) ─────────────────────────────── */
+  #mapview { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--bg); }
+  #mapview[hidden] { display: none; }
+  .maptoolbar {
+    flex: none; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--border); font-size: 13px;
+  }
+  .maptoolbar .maptitle { font-weight: 700; color: var(--accent-soft); letter-spacing: 0.04em; }
+  .maptoolbar label { color: var(--dim); }
+  .maptoolbar select {
+    padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--bg); color: var(--fg); font: inherit;
+  }
+  .maptoolbar .mapcount { color: var(--dim); font-size: 12.5px; }
+  .maptoolbar .spacer { margin-left: auto; }
+  .maptoolbar .mbtn {
+    padding: 4px 11px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--panel); color: var(--fg); font: 12.5px var(--sans); cursor: pointer;
+  }
+  .maptoolbar .mbtn:hover { color: var(--accent); border-color: var(--accent); }
+  .maptoolbar .mbtn.danger:hover { color: var(--danger); border-color: var(--danger); }
+
+  .mapcanvas {
+    position: relative; flex: 1; min-height: 0; overflow: hidden; cursor: grab;
+    background: radial-gradient(circle, var(--border) 1px, transparent 1.3px) 0 0 / 24px 24px;
+  }
+  .mapcanvas.panning { cursor: grabbing; }
+  .mapworld { position: absolute; top: 0; left: 0; width: 1px; height: 1px; transform-origin: 0 0; }
+  .mapedges { position: absolute; top: 0; left: 0; overflow: visible; pointer-events: none; }
+  .mapedges path { fill: none; stroke: var(--dim); stroke-width: 1.5; opacity: 0.55; }
+
+  .mnode {
+    position: absolute; width: 190px; box-sizing: border-box; padding: 8px 10px 9px;
+    background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--dim);
+    border-radius: 9px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22); cursor: grab; user-select: none;
+    touch-action: none;
+  }
+  .mnode:hover { border-color: var(--accent); }
+  .mnode.dragging { cursor: grabbing; z-index: 10; box-shadow: 0 8px 22px rgba(0, 0, 0, 0.4); }
+  .mnode .mtype { font: 10.5px var(--sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); margin-bottom: 2px; }
+  .mnode .mlabel { font: 13px/1.4 var(--mono); color: var(--fg-strong); overflow-wrap: anywhere; }
+  .mnode .msub { margin-top: 3px; font: 11.5px var(--sans); color: var(--dim); overflow-wrap: anywhere; }
+  .mnode .mx {
+    position: absolute; top: 2px; right: 4px; border: 0; background: none; color: var(--dim);
+    font-size: 14px; line-height: 1; cursor: pointer; opacity: 0;
+  }
+  .mnode:hover .mx { opacity: 1; }
+  .mnode .mx:hover { color: var(--danger); }
+  .mnode.type-root      { border-left-color: var(--accent); }
+  .mnode.type-domain    { border-left-color: #7aa2f7; }
+  .mnode.type-subdomain { border-left-color: #bb9af7; }
+  .mnode.type-host      { border-left-color: var(--accent-soft); }
+  .mnode.type-port      { border-left-color: #73daca; }
+  .mnode.type-endpoint  { border-left-color: var(--ok); }
+  .mnode.type-param     { border-left-color: var(--warn); }
+  .mnode.type-user      { border-left-color: #ff9e64; }
+  .mnode.type-share     { border-left-color: #7dcfff; }
+  .mnode.type-cred      { border-left-color: #ffc777; }
+  .mnode.type-finding   { border-left-color: var(--danger); }
+  .mnode.type-tech      { border-left-color: #9ece6a; }
+  .mnode.type-note      { border-left-color: var(--dim); }
+
+  .mapempty {
+    position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 10px; color: var(--dim); font-size: 13.5px; text-align: center;
+    padding: 24px; pointer-events: none;
+  }
+  .mapempty .big { font-size: 15px; color: var(--fg-strong); }
+  .maplegend {
+    position: absolute; bottom: 10px; left: 10px; display: flex; gap: 12px; flex-wrap: wrap;
+    padding: 7px 11px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    font-size: 11.5px; color: var(--dim); pointer-events: none; opacity: 0.92;
+  }
+  .maplegend span { display: inline-flex; align-items: center; gap: 5px; }
+  .maplegend i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+
   @media (max-width: 760px) {
     .keys { display: none; }
     .layout { grid-template-columns: 1fr; grid-template-rows: 34vh 1fr; }
@@ -705,6 +781,41 @@
   </div>
   <div id="termpanes"></div>
 </section>
+
+<!-- Application Map: an Obsidian-style canvas of the engagement, built up from
+     the output of every catalog — nmap hosts/ports, web hosts/endpoints/params,
+     and AD hosts/users/creds/shares — stored per project. Shown when the
+     "Application Map" tab is active (see AppMap in the script below). -->
+<section id="mapview" hidden aria-label="Application map">
+  <div class="maptoolbar">
+    <span class="maptitle">⬡ Application Map</span>
+    <label for="map-project">Project</label>
+    <select id="map-project" aria-label="Map project"></select>
+    <span class="mapcount" id="map-count"></span>
+    <span class="spacer"></span>
+    <button type="button" class="mbtn" id="map-add" title="Add a free-floating note node">＋ Node</button>
+    <button type="button" class="mbtn" id="map-example" title="Load / reset the example map">★ Example</button>
+    <button type="button" class="mbtn" id="map-fit" title="Fit all nodes in view">⤢ Fit</button>
+    <button type="button" class="mbtn danger" id="map-delete" title="Delete the selected project's map">🗑 Delete map</button>
+  </div>
+  <div class="mapcanvas" id="map-canvas">
+    <div class="mapworld" id="map-world">
+      <svg class="mapedges" id="map-edges" width="8000" height="6000"></svg>
+    </div>
+    <div class="mapempty" id="map-empty" hidden></div>
+    <div class="maplegend" aria-hidden="true">
+      <span><i style="background:var(--accent)"></i>scope</span>
+      <span><i style="background:var(--accent-soft)"></i>host</span>
+      <span><i style="background:#73daca"></i>port</span>
+      <span><i style="background:var(--ok)"></i>endpoint</span>
+      <span><i style="background:var(--warn)"></i>param</span>
+      <span><i style="background:#ff9e64"></i>user</span>
+      <span><i style="background:#ffc777"></i>cred</span>
+      <span><i style="background:#7dcfff"></i>share</span>
+      <span><i style="background:var(--danger)"></i>finding</span>
+    </div>
+  </div>
+</section>
 </div>
 
 <div id="toast" role="status" aria-live="polite"></div>
@@ -756,6 +867,15 @@ const MODES = (CONFIG.modes && CONFIG.modes.length
     key: md.key, label: md.label, catalog: cat, projects: md.projects || [],
     bySlug: bs, activeProject: "", currentSlug: null, filter: "",
   };
+});
+// Application Map is a client-only pseudo-mode: instead of a tool catalog it
+// shows an Obsidian-style canvas (see AppMap) that aggregates what every other
+// mode's runs discover. It carries the per-mode UI fields the switcher reads,
+// an empty catalog, and shares the project list.
+MODES.push({
+  key: "appmap", label: "Application Map", isMap: true,
+  catalog: [], projects: MODES[0].projects, bySlug: new Map(),
+  activeProject: "", currentSlug: null, filter: "",
 });
 const MODE_BY_KEY = new Map(MODES.map((m) => [m.key, m]));
 
@@ -985,6 +1105,9 @@ function activateMode(key) {
     current = null;
   }
   renderModeToggle();
+  // The map tab has no tool list/detail — skip the builder wiring and just show
+  // the canvas (syncModeChrome swaps the panes).
+  if (mode.isMap) { current = null; setHash(); syncModeChrome(); return; }
   filterEl.value = mode.filter || "";
   applyFilter(); // renders the list and selects the first match
   const restore = mode.currentSlug && bySlug.get(mode.currentSlug);
@@ -998,6 +1121,15 @@ function activateMode(key) {
 // attacker/victim shells (docked on the right) — which also gives the command
 // list and builder the full height to scroll. Every other mode keeps it.
 function syncModeChrome() {
+  // Application Map mode hides the whole builder (tool list + detail + output)
+  // and shows the canvas instead; every other mode hides the canvas.
+  const isMap = !!mode.isMap;
+  const layout = document.querySelector(".layout");
+  const mapview = document.getElementById("mapview");
+  if (layout) layout.style.display = isMap ? "none" : "";
+  if (mapview) mapview.hidden = !isMap;
+  if (isMap) { AppMap.show(); return; }
+
   const isRev = mode.key === "revshell";
   const out = document.getElementById("outputpanel");
   if (out) out.hidden = isRev;
@@ -1458,6 +1590,10 @@ async function run() {
   const miss = missingRequired();
   if (miss.length) { toast("missing required fields"); return; }
 
+  // Capture this run's command + output so the Application Map can map what it
+  // discovers (nmap hosts/ports, web endpoints/params, AD users/creds/shares).
+  AppMap.beginRun(buildCommand(), mode.key);
+
   const idx = CATALOG.indexOf(current);
   const values = (current.Flags || []).map((f, i) =>
     f.Kind === BOOL ? { enabled: !!work[i].enabled, value: "" } : { value: work[i].value || "", enabled: false });
@@ -1505,6 +1641,8 @@ async function run() {
     runCtl = null;
     setRunning(false);
     document.getElementById("actmsg").textContent = "";
+    // Covers a cancelled/failed run that never streamed a final record.
+    AppMap.endRun(activeProject);
   }
 }
 
@@ -1514,10 +1652,12 @@ function handleRec(line) {
   if (rec.final) {
     if (rec.err) appendLine("— " + rec.err + " —", "err");
     else appendLine("— done · exit 0 —", "done");
+    AppMap.endRun(activeProject);
     return;
   }
   if (typeof rec.line === "string") {
     appendLine(rec.line, rec.line.startsWith("$ ") ? "cmdline" : null);
+    if (!rec.line.startsWith("$ ")) AppMap.pushLine(rec.line);
   }
 }
 
@@ -2316,6 +2456,539 @@ for (const b of document.querySelectorAll(".colbtn")) {
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
   });
+})();
+
+// ════════════════════════════════════════════════════════════════════════════
+// Application Map — an Obsidian-style canvas of the whole engagement.
+//
+// Every command run (from ANY catalog — setup/nmap, web, AD, linux) feeds the
+// active project's map:
+//   • nmap "scan report" + "PORT open" lines → host + port nodes
+//   • URLs → host + endpoint + param nodes
+//   • bare subdomain listings → subdomain nodes
+//   • AD (netexec/cme) protocol lines → host + domain nodes, plus user / cred /
+//     share nodes from enumerated accounts, valid logons and readable shares
+//   • nuclei severities, nmap "VULNERABLE", and [POC] lines → finding nodes
+// all linked into a tree rooted at the project's scope. Nodes are draggable;
+// the view pans (drag) and zooms (wheel). Maps are stored per project in
+// localStorage, so each engagement keeps its own. A seeded "★ Example map"
+// shows what a populated map looks like, and any map can be deleted.
+// ════════════════════════════════════════════════════════════════════════════
+const MAP_EXAMPLE = "★ Example map"; // reserved project name for the demo
+
+// Which column a node type sits in, left→right, for auto-layout.
+const MAP_COL = {
+  root: 0, domain: 0, subdomain: 1, host: 1, tech: 1,
+  port: 2, endpoint: 2, param: 3, user: 3, share: 3, cred: 3, finding: 3, note: 3,
+};
+const MAP_TYPE_LABEL = {
+  root: "scope", domain: "domain", subdomain: "subdomain", host: "host", port: "port",
+  endpoint: "endpoint", param: "param", user: "user", share: "share", cred: "cred",
+  finding: "finding", tech: "tech", note: "note",
+};
+
+// A ready-made map spanning all three catalogs so a first-time user sees the
+// shape immediately. Returned fresh each call so "reset example" restores it.
+function mapExampleData() {
+  return {
+    nodes: [
+      { id: "root:corp.local", type: "root", label: "CORP.LOCAL", sub: "engagement scope", x: 60, y: 300 },
+      { id: "host:dc01", type: "host", label: "DC01", sub: "10.10.0.1 · Domain Controller", x: 330, y: 90 },
+      { id: "host:web01", type: "host", label: "WEB01", sub: "10.10.0.20 · IIS 10", x: 330, y: 320 },
+      { id: "host:file01", type: "host", label: "FILE01", sub: "10.10.0.50", x: 330, y: 500 },
+      { id: "port:dc01:445", type: "port", label: "445/tcp smb", sub: "Windows Server 2019", x: 610, y: 40 },
+      { id: "port:dc01:88", type: "port", label: "88/tcp kerberos", sub: "", x: 610, y: 110 },
+      { id: "port:dc01:389", type: "port", label: "389/tcp ldap", sub: "", x: 610, y: 180 },
+      { id: "port:web01:443", type: "port", label: "443/tcp https", sub: "", x: 610, y: 300 },
+      { id: "port:file01:445", type: "port", label: "445/tcp smb", sub: "", x: 610, y: 500 },
+      { id: "ep:https://web01/login", type: "endpoint", label: "/login", sub: "web01", x: 610, y: 370 },
+      { id: "ep:https://web01/admin", type: "endpoint", label: "/admin", sub: "web01", x: 610, y: 430 },
+      { id: "param:redirect", type: "param", label: "redirect", sub: "on /login", x: 890, y: 370 },
+      { id: "user:jsmith", type: "user", label: "CORP\\jsmith", sub: "domain account", x: 890, y: 40 },
+      { id: "user:svc_sql", type: "user", label: "CORP\\svc_sql", sub: "service account (kerberoastable)", x: 890, y: 110 },
+      { id: "cred:admin", type: "cred", label: "CORP\\administrator", sub: "valid creds · Pwn3d!", x: 1180, y: 60 },
+      { id: "share:sysvol", type: "share", label: "SYSVOL", sub: "READ", x: 890, y: 190 },
+      { id: "share:backups", type: "share", label: "Backups", sub: "READ,WRITE", x: 890, y: 250 },
+      { id: "find:sqli", type: "finding", label: "SQLi on /login", sub: "high · web01", x: 1180, y: 370 },
+      { id: "find:ms17", type: "finding", label: "MS17-010 VULNERABLE", sub: "critical · FILE01", x: 890, y: 500 },
+    ],
+    edges: [
+      { from: "root:corp.local", to: "host:dc01" },
+      { from: "root:corp.local", to: "host:web01" },
+      { from: "root:corp.local", to: "host:file01" },
+      { from: "host:dc01", to: "port:dc01:445" },
+      { from: "host:dc01", to: "port:dc01:88" },
+      { from: "host:dc01", to: "port:dc01:389" },
+      { from: "host:web01", to: "port:web01:443" },
+      { from: "host:file01", to: "port:file01:445" },
+      { from: "host:web01", to: "ep:https://web01/login" },
+      { from: "host:web01", to: "ep:https://web01/admin" },
+      { from: "ep:https://web01/login", to: "param:redirect" },
+      { from: "ep:https://web01/login", to: "find:sqli" },
+      { from: "host:dc01", to: "user:jsmith" },
+      { from: "host:dc01", to: "user:svc_sql" },
+      { from: "host:dc01", to: "cred:admin" },
+      { from: "host:dc01", to: "share:sysvol" },
+      { from: "host:dc01", to: "share:backups" },
+      { from: "host:file01", to: "find:ms17" },
+    ],
+  };
+}
+
+const AppMap = {
+  project: undefined, // display name currently shown ("", MAP_EXAMPLE, or a real name)
+  tx: 40, ty: 40, scale: 1,
+  _els: new Map(), _edges: [], _data: { nodes: [], edges: [] },
+  _running: false, _runCmd: "", _runMode: "", _runLines: [], _lastProject: null,
+
+  // ── storage ───────────────────────────────────────────────────────────────
+  key(project) {
+    const slug = project === MAP_EXAMPLE ? "__example__" : project === "" ? "__none__" : encodeURIComponent(project);
+    return "ptmap:v1:" + slug;
+  },
+  safeGet(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  safeSet(k, v) { try { localStorage.setItem(k, v); } catch {} },
+  safeDel(k) { try { localStorage.removeItem(k); } catch {} },
+  dismissed() { return this.safeGet("ptmap:v1:__example_dismissed__") === "1"; },
+  setDismissed(v) { v ? this.safeSet("ptmap:v1:__example_dismissed__", "1") : this.safeDel("ptmap:v1:__example_dismissed__"); },
+
+  load(project) {
+    const raw = this.safeGet(this.key(project));
+    if (raw) {
+      try {
+        const d = JSON.parse(raw);
+        if (d && Array.isArray(d.nodes) && Array.isArray(d.edges)) return d;
+      } catch {}
+    }
+    if (project === MAP_EXAMPLE && !this.dismissed()) {
+      const d = mapExampleData();
+      this.save(project, d);
+      return d;
+    }
+    return { nodes: [], edges: [] };
+  },
+  save(project, data) { this.safeSet(this.key(project), JSON.stringify(data)); },
+  seedExample() { this.setDismissed(false); this.save(MAP_EXAMPLE, mapExampleData()); },
+  clear(project) { this.safeDel(this.key(project)); if (project === MAP_EXAMPLE) this.setDismissed(true); },
+
+  // ── helpers ───────────────────────────────────────────────────────────────
+  hostOf(s) {
+    if (!s) return "";
+    s = String(s).trim().replace(/^[a-z][a-z0-9+.-]*:\/\//i, "");
+    s = s.split(/[\/?#]/)[0].split(":")[0].replace(/^\*\./, "");
+    return s.toLowerCase();
+  },
+  hash(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36); },
+  place(data, type) {
+    const col = MAP_COL[type] ?? 3;
+    const count = data.nodes.filter((n) => (MAP_COL[n.type] ?? 3) === col).length;
+    return { x: 70 + col * 285, y: 60 + count * 84 };
+  },
+  rootFor(project, cmd) {
+    const p = (PROJECTS || []).find((p) => p.name === project);
+    if (p && p.in_scope && p.in_scope.length) {
+      const s0 = String(p.in_scope[0]).trim();
+      if (/^\d{1,3}(?:\.\d{1,3}){3}(?:\/\d{1,2})?$/.test(s0)) return s0;
+      const h = this.hostOf(s0); if (h) return h;
+    }
+    if (cmd) {
+      let m = cmd.match(/\s-d\s+([^\s'"]+)/) || cmd.match(/--domain[=\s]+([^\s'"]+)/);
+      if (m) return this.hostOf(m[1]);
+      m = cmd.match(/https?:\/\/[^\s'"]+/);
+      if (m) return this.hostOf(m[0]);
+      m = cmd.match(/\b(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}\b/i);
+      if (m) return m[0].toLowerCase();
+      m = cmd.match(/\b\d{1,3}(?:\.\d{1,3}){3}(?:\/\d{1,2})?\b/);
+      if (m) return m[0];
+    }
+    return "";
+  },
+
+  // ── ingest a finished run into the project's map ────────────────────────────
+  beginRun(cmd, modeKey) { this._running = true; this._runCmd = cmd || ""; this._runMode = modeKey || ""; this._runLines = []; },
+  pushLine(l) { if (this._running && this._runLines.length < 8000) this._runLines.push(l); },
+  endRun(project) {
+    if (!this._running) return;
+    this._running = false;
+    this._lastProject = project; // so opening the map tab lands on this project
+    const added = this.ingest(this._runCmd, this._runLines, project, this._runMode);
+    this._runLines = [];
+    if (added > 0) {
+      toast("Application map +" + added + (added === 1 ? " node" : " nodes"));
+      if (!document.getElementById("mapview").hidden && this.project === project) this.render();
+    }
+  },
+  ingest(cmd, lines, project, modeKey) {
+    const data = this.load(project);
+    const before = data.nodes.length;
+    const CAP = 400;
+    const root = this.rootFor(project, cmd);
+    const add = (id, props) => {
+      let n = data.nodes.find((x) => x.id === id);
+      if (n) { if (props.sub && !n.sub) n.sub = props.sub; return n; }
+      if (data.nodes.length >= CAP) return null;
+      n = Object.assign({ id, x: 0, y: 0 }, props);
+      const p = this.place(data, n.type);
+      n.x = p.x; n.y = p.y;
+      data.nodes.push(n);
+      return n;
+    };
+    const link = (a, b) => {
+      if (!a || !b || a === b) return;
+      if (!data.edges.some((e) => e.from === a && e.to === b)) data.edges.push({ from: a, to: b });
+    };
+    let rootId = "";
+    if (root) { const rn = add("root:" + root, { type: "root", label: root, sub: "scope" }); rootId = rn ? rn.id : ""; }
+    const isDomainRoot = root && /[a-z]/i.test(root) && !/^\d/.test(root);
+    const ensureHost = (h) => {
+      if (!h) return "";
+      h = h.toLowerCase();
+      if (root && h === String(root).toLowerCase()) return rootId;
+      const type = isDomainRoot && h.endsWith("." + String(root).toLowerCase()) ? "subdomain" : "host";
+      const n = add("host:" + h, { type, label: h });
+      if (!n) return "";
+      link(rootId, n.id);
+      return n.id;
+    };
+
+    // ── nmap: scan report (host) + PORT/STATE/SERVICE lines ───────────────────
+    let curHost = "";
+    for (const raw of lines) {
+      const t = raw.trim();
+      let m = t.match(/^Nmap scan report for\s+(.+)$/i);
+      if (m) {
+        let rest = m[1].trim(), name = rest, ip = "";
+        const mm = rest.match(/^(.*?)\s+\(([\d.]+)\)$/);
+        if (mm) { name = mm[1]; ip = mm[2]; }
+        curHost = ensureHost(ip || name);
+        if (mm) { const hn = data.nodes.find((n) => n.id === curHost); if (hn && !hn.sub) hn.sub = name; }
+        continue;
+      }
+      m = t.match(/^(\d{1,5})\/(tcp|udp)\s+(?:open|open\|filtered)\s+(\S+)(?:\s+(.*))?$/i);
+      if (m) {
+        const base = curHost || rootId || "host";
+        const pn = add("port:" + base + ":" + m[1] + "/" + m[2].toLowerCase(),
+          { type: "port", label: m[1] + "/" + m[2].toLowerCase() + " " + m[3], sub: (m[4] || "").trim() });
+        if (pn) link(curHost || rootId, pn.id);
+        continue;
+      }
+    }
+
+    // ── web: URLs → host + endpoint + params ──────────────────────────────────
+    const text = lines.join("\n");
+    const urlRe = /\bhttps?:\/\/[^\s"'<>)\]]+/gi;
+    const seen = new Set();
+    let epCount = 0, um;
+    while ((um = urlRe.exec(text))) {
+      const u = um[0].replace(/[.,;]+$/, "");
+      if (seen.has(u)) continue;
+      seen.add(u);
+      let url; try { url = new URL(u); } catch { continue; }
+      const hid = ensureHost(url.hostname.toLowerCase());
+      if (epCount >= 60) continue;
+      const path = url.pathname || "/";
+      const en = add("ep:" + url.origin + path, { type: "endpoint", label: path, sub: url.hostname.toLowerCase() });
+      epCount++;
+      if (en) {
+        link(hid, en.id);
+        let pc = 0;
+        url.searchParams.forEach((v, k) => {
+          if (pc++ > 6) return;
+          const pn = add("param:" + url.hostname.toLowerCase() + path + "#" + k, { type: "param", label: k, sub: "on " + path });
+          if (pn) link(en.id, pn.id);
+        });
+      }
+    }
+
+    // ── web recon: bare subdomain listings ────────────────────────────────────
+    if (isDomainRoot) {
+      for (const raw of lines) {
+        const t = raw.trim().toLowerCase().replace(/^\*\./, "");
+        if (/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/.test(t) && t.endsWith("." + String(root).toLowerCase()) && t !== String(root).toLowerCase()) ensureHost(t);
+      }
+    }
+
+    // ── AD: netexec / crackmapexec output (hosts, domains, creds, shares, users)
+    if (modeKey === "ad") {
+      for (const raw of lines) {
+        const t = raw.trim();
+        // Protocol host line:  SMB  10.0.0.5  445  DC01  [*] Windows ... (domain:CORP.LOCAL)
+        let m = t.match(/^(SMB|LDAP|WINRM|RDP|MSSQL|SSH|FTP|NFS|WMI)\s+(\S+)\s+\d+\s+(\S+)\s+\[[*+\-!]\]\s*(.*)$/i);
+        if (m) {
+          const ip = m[2], nb = m[3], info = m[4];
+          const hid = ensureHost(ip);
+          const hn = data.nodes.find((n) => n.id === hid);
+          const dm = info.match(/\(domain:([^)]+)\)/i);
+          if (dm) {
+            const dn = add("domain:" + dm[1].toLowerCase(), { type: "domain", label: dm[1], sub: "AD domain" });
+            if (dn) { link(rootId, dn.id); link(dn.id, hid); }
+          }
+          const osm = info.match(/(Windows[^()]*?)(?:\s*\(|$)/i);
+          if (hn && osm) hn.sub = (nb && nb !== "." ? nb + " · " : "") + osm[1].trim();
+          else if (hn && nb && nb !== "." && !hn.sub) hn.sub = nb;
+          continue;
+        }
+        // Valid credentials:  [+] CORP.LOCAL\user:password  (Pwn3d!)
+        m = t.match(/\[\+\]\s+([A-Za-z0-9.\-]+)\\([A-Za-z0-9._$\-]+):(\S+?)(\s+\(Pwn3d!\))?$/);
+        if (m) {
+          const dom = m[1], user = m[2], pwn = !!m[4];
+          const un = add("user:" + dom.toLowerCase() + "\\" + user.toLowerCase(),
+            { type: pwn ? "cred" : "cred", label: dom + "\\" + user, sub: pwn ? "valid creds · Pwn3d!" : "valid creds" });
+          const dn = data.nodes.find((n) => n.id === "domain:" + dom.toLowerCase());
+          if (un) link(dn ? dn.id : rootId, un.id);
+          continue;
+        }
+        // Readable/writable share:  SYSVOL  READ  Logon server share
+        m = t.match(/^(\S+)\s+(READ,WRITE|READ|WRITE)\b(?:\s+(.*))?$/i);
+        if (m && m[1].toLowerCase() !== "share" && !/permission/i.test(t)) {
+          const sn = add("share:" + m[1].toLowerCase(), { type: "share", label: m[1], sub: m[2].toUpperCase() });
+          if (sn) link(rootId, sn.id);
+          continue;
+        }
+        // Enumerated domain account:  CORP.LOCAL\username
+        m = t.match(/(?:^|\s)([A-Za-z][A-Za-z0-9.\-]+)\\([A-Za-z0-9._$\-]+)(?=\s|$)/);
+        if (m && !/\[[+*\-!]\]/.test(t)) {
+          const un = add("user:" + m[1].toLowerCase() + "\\" + m[2].toLowerCase(),
+            { type: "user", label: m[1] + "\\" + m[2], sub: "domain account" });
+          const dn = data.nodes.find((n) => n.id === "domain:" + m[1].toLowerCase());
+          if (un) link(dn ? dn.id : rootId, un.id);
+          continue;
+        }
+      }
+    }
+
+    // ── findings: nuclei severities, nmap VULNERABLE, [POC] lines ─────────────
+    for (const raw of lines) {
+      const t = raw.trim();
+      if (!t) continue;
+      const sev = t.match(/\[(critical|high|medium|low|info)\]/i);
+      const vuln = /\bVULNERABLE\b/.test(t);
+      const poc = /\[POC\]/i.test(t);
+      if (!sev && !vuln && !poc) continue;
+      const urlm = t.match(/https?:\/\/[^\s"'<>)\]]+/);
+      const ipm = t.match(/\b\d{1,3}(?:\.\d{1,3}){3}\b/);
+      let linkTo = rootId;
+      if (urlm) { try { linkTo = ensureHost(new URL(urlm[0]).hostname.toLowerCase()) || rootId; } catch {} }
+      else if (ipm) { linkTo = ensureHost(ipm[0]) || rootId; }
+      const label = t.length > 72 ? t.slice(0, 69) + "…" : t;
+      const fn = add("find:" + this.hash(t), { type: "finding", label, sub: sev ? sev[1].toLowerCase() : vuln ? "vulnerable" : "poc" });
+      if (fn) link(linkTo, fn.id);
+    }
+
+    this.save(project, data);
+    return data.nodes.length - before;
+  },
+
+  // ── rendering ───────────────────────────────────────────────────────────────
+  current() { return this._data; },
+  render() {
+    this._data = this.load(this.project);
+    const world = document.getElementById("map-world");
+    const empty = document.getElementById("map-empty");
+    if (!world) return;
+    world.querySelectorAll(".mnode").forEach((n) => n.remove());
+    this._els = new Map();
+    this._edges = this._data.edges || [];
+    for (const nd of this._data.nodes) {
+      const el = this.nodeEl(nd);
+      world.append(el);
+      this._els.set(nd.id, el);
+    }
+    this.renderEdges();
+    const count = document.getElementById("map-count");
+    if (count) count.textContent = this._data.nodes.length + " nodes · " + (this._data.edges || []).length + " links";
+    if (empty) {
+      const none = !this._data.nodes.length;
+      empty.hidden = !none;
+      if (none) {
+        empty.innerHTML =
+          '<div class="big">No map yet for this project.</div>' +
+          "<div>Run a command from any catalog with this project active — nmap hosts &amp; ports, web endpoints &amp; params, and AD users, creds &amp; shares appear here as a canvas you can rearrange.</div>" +
+          "<div>Want to see what that looks like? Click <b>★ Example</b> above.</div>";
+      }
+    }
+  },
+  nodeEl(nd) {
+    const el = document.createElement("div");
+    el.className = "mnode type-" + (nd.type || "note");
+    el.style.left = nd.x + "px";
+    el.style.top = nd.y + "px";
+    el.innerHTML =
+      '<button class="mx" title="Delete node" aria-label="Delete node">✕</button>' +
+      '<div class="mtype"></div><div class="mlabel"></div>' +
+      (nd.sub ? '<div class="msub"></div>' : "");
+    el.querySelector(".mtype").textContent = MAP_TYPE_LABEL[nd.type] || "node";
+    el.querySelector(".mlabel").textContent = nd.label || nd.id;
+    if (nd.sub) el.querySelector(".msub").textContent = nd.sub;
+    const x = el.querySelector(".mx");
+    x.addEventListener("pointerdown", (e) => e.stopPropagation());
+    x.addEventListener("click", (e) => { e.stopPropagation(); this.deleteNode(nd.id); });
+    el.addEventListener("dblclick", (e) => { e.preventDefault(); this.renameNode(nd.id); });
+    this.attachDrag(el, nd);
+    return el;
+  },
+  attachDrag(el, nd) {
+    el.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      e.stopPropagation();
+      try { el.setPointerCapture(e.pointerId); } catch {}
+      el.classList.add("dragging");
+      const sx = e.clientX, sy = e.clientY, x0 = nd.x, y0 = nd.y;
+      let moved = false;
+      const onMove = (ev) => {
+        nd.x = Math.round(x0 + (ev.clientX - sx) / this.scale);
+        nd.y = Math.round(y0 + (ev.clientY - sy) / this.scale);
+        el.style.left = nd.x + "px";
+        el.style.top = nd.y + "px";
+        moved = true;
+        this.renderEdges();
+      };
+      const onUp = () => {
+        el.classList.remove("dragging");
+        el.removeEventListener("pointermove", onMove);
+        el.removeEventListener("pointerup", onUp);
+        if (moved) this.save(this.project, this._data);
+      };
+      el.addEventListener("pointermove", onMove);
+      el.addEventListener("pointerup", onUp);
+    });
+  },
+  renderEdges() {
+    const svg = document.getElementById("map-edges");
+    if (!svg) return;
+    svg.replaceChildren();
+    for (const e of this._edges || []) {
+      const a = this._els.get(e.from), b = this._els.get(e.to);
+      if (!a || !b) continue;
+      const x1 = a.offsetLeft + a.offsetWidth / 2, y1 = a.offsetTop + a.offsetHeight / 2;
+      const x2 = b.offsetLeft + b.offsetWidth / 2, y2 = b.offsetTop + b.offsetHeight / 2;
+      const mx = (x1 + x2) / 2;
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", "M" + x1 + " " + y1 + " C " + mx + " " + y1 + " " + mx + " " + y2 + " " + x2 + " " + y2);
+      svg.append(path);
+    }
+  },
+  apply() {
+    const w = document.getElementById("map-world");
+    if (w) w.style.transform = "translate(" + this.tx + "px," + this.ty + "px) scale(" + this.scale + ")";
+  },
+  fit() {
+    const data = this._data;
+    const cv = document.getElementById("map-canvas");
+    if (!cv) return;
+    if (!data.nodes.length) { this.tx = 40; this.ty = 40; this.scale = 1; this.apply(); return; }
+    let minx = 1e9, miny = 1e9, maxx = -1e9, maxy = -1e9;
+    for (const nd of data.nodes) {
+      const el = this._els.get(nd.id);
+      const w = el ? el.offsetWidth : 190, h = el ? el.offsetHeight : 60;
+      minx = Math.min(minx, nd.x); miny = Math.min(miny, nd.y);
+      maxx = Math.max(maxx, nd.x + w); maxy = Math.max(maxy, nd.y + h);
+    }
+    const cw = cv.clientWidth, ch = cv.clientHeight, pad = 60;
+    const s = Math.min(cw / (maxx - minx + pad * 2), ch / (maxy - miny + pad * 2), 1.2);
+    this.scale = Math.max(0.25, s || 1);
+    this.tx = (cw - (maxx - minx) * this.scale) / 2 - minx * this.scale;
+    this.ty = (ch - (maxy - miny) * this.scale) / 2 - miny * this.scale;
+    this.apply();
+  },
+
+  // ── node editing ────────────────────────────────────────────────────────────
+  addNode() {
+    const name = prompt("Node label:", "");
+    if (name === null) return;
+    const cv = document.getElementById("map-canvas");
+    const wx = Math.round((cv.clientWidth / 2 - this.tx) / this.scale - 95);
+    const wy = Math.round((cv.clientHeight / 2 - this.ty) / this.scale - 25);
+    this._data = this.load(this.project);
+    this._data.nodes.push({ id: "note:" + this.hash(name + Date.now()), type: "note", label: name || "note", x: wx, y: wy });
+    this.save(this.project, this._data);
+    this.render();
+  },
+  renameNode(id) {
+    this._data = this.load(this.project);
+    const n = this._data.nodes.find((x) => x.id === id);
+    if (!n) return;
+    const name = prompt("Rename node:", n.label || "");
+    if (name === null) return;
+    n.label = name;
+    this.save(this.project, this._data);
+    this.render();
+  },
+  deleteNode(id) {
+    this._data = this.load(this.project);
+    this._data.nodes = this._data.nodes.filter((n) => n.id !== id);
+    this._data.edges = this._data.edges.filter((e) => e.from !== id && e.to !== id);
+    this.save(this.project, this._data);
+    this.render();
+  },
+
+  // ── tab entry point ─────────────────────────────────────────────────────────
+  show() {
+    const sel = document.getElementById("map-project");
+    if (!sel) return;
+    sel.replaceChildren();
+    sel.append(new Option("★ Example map", MAP_EXAMPLE));
+    sel.append(new Option("— no project —", ""));
+    for (const p of PROJECTS || []) sel.append(new Option(p.name, p.name));
+    const vals = [...sel.options].map((o) => o.value);
+    if (this.project === undefined || this.project === null) {
+      const cand = this._lastProject != null ? this._lastProject : activeProject;
+      this.project = cand != null && this.load(cand).nodes.length ? cand : MAP_EXAMPLE;
+    }
+    if (!vals.includes(this.project)) this.project = activeProject && vals.includes(activeProject) ? activeProject : MAP_EXAMPLE;
+    sel.value = this.project;
+    this.render();
+    this.fit();
+  },
+};
+
+// Wire the map toolbar + canvas interactions once.
+(function () {
+  const sel = document.getElementById("map-project");
+  const cv = document.getElementById("map-canvas");
+  if (!sel || !cv) return;
+  sel.addEventListener("change", () => { AppMap.project = sel.value; AppMap.render(); AppMap.fit(); });
+  document.getElementById("map-add").addEventListener("click", () => AppMap.addNode());
+  document.getElementById("map-fit").addEventListener("click", () => AppMap.fit());
+  document.getElementById("map-example").addEventListener("click", () => {
+    AppMap.project = MAP_EXAMPLE;
+    AppMap.seedExample();
+    AppMap.show();
+    toast("Example map loaded");
+  });
+  document.getElementById("map-delete").addEventListener("click", () => {
+    const p = AppMap.project;
+    const label = p === MAP_EXAMPLE ? "the example map" : p === "" ? "the no-project map" : 'the map for "' + p + '"';
+    if (!confirm("Delete " + label + "? This can't be undone.")) return;
+    AppMap.clear(p);
+    AppMap.render();
+    AppMap.fit();
+    toast("Map deleted");
+  });
+
+  // Pan by dragging the background; zoom with the wheel (centred on the cursor).
+  cv.addEventListener("pointerdown", (e) => {
+    if (e.target.closest(".mnode")) return;
+    cv.classList.add("panning");
+    const sx = e.clientX, sy = e.clientY, tx0 = AppMap.tx, ty0 = AppMap.ty;
+    try { cv.setPointerCapture(e.pointerId); } catch {}
+    const mv = (ev) => { AppMap.tx = tx0 + (ev.clientX - sx); AppMap.ty = ty0 + (ev.clientY - sy); AppMap.apply(); };
+    const up = () => { cv.classList.remove("panning"); cv.removeEventListener("pointermove", mv); cv.removeEventListener("pointerup", up); };
+    cv.addEventListener("pointermove", mv);
+    cv.addEventListener("pointerup", up);
+  });
+  cv.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const rect = cv.getBoundingClientRect();
+    const px = e.clientX - rect.left, py = e.clientY - rect.top;
+    const os = AppMap.scale;
+    let ns = os * (e.deltaY < 0 ? 1.1 : 1 / 1.1);
+    ns = Math.max(0.2, Math.min(2.5, ns));
+    AppMap.tx = px - (px - AppMap.tx) * (ns / os);
+    AppMap.ty = py - (py - AppMap.ty) * (ns / os);
+    AppMap.scale = ns;
+    AppMap.apply();
+  }, { passive: false });
 })();
 
 // ── boot ────────────────────────────────────────────────────────────────────
