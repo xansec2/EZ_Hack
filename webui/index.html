@@ -102,8 +102,16 @@
   }
 
   /* ── layout ─────────────────────────────────────────────────────────── */
+  /* Builder (.layout) and terminal dock (#termview) sit side by side in .main. */
+  .main {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: row;
+  }
   .layout {
     flex: 1;
+    min-width: 0;
     min-height: 0;
     display: grid;
     grid-template-columns: minmax(260px, 340px) 1fr;
@@ -441,27 +449,32 @@
   .termtoggle[aria-pressed="true"] { background: #fff; color: var(--banner); border-color: #fff; opacity: 1; }
 
   /* ── terminal workspace ───────────────────────────────────────────────── */
-  /* The terminal docks below the command builder rather than replacing it, so
-     both are usable at once. #termview keeps a fixed (draggable) height while
-     .layout flexes to fill the rest. */
+  /* The terminal docks to the right of the command builder rather than
+     replacing it, so both are usable at once. #termview keeps a fixed
+     (draggable) width while .layout flexes to fill the rest. */
   #termview {
+    position: relative;
     flex: none;
-    height: var(--term-h, 42vh);
-    min-height: 120px;
+    width: var(--term-w, 42vw);
+    min-width: 220px;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     background: var(--bg);
-    border-top: 2px solid var(--border);
+    border-left: 2px solid var(--border);
   }
   #termview[hidden] { display: none; }
 
-  /* Draggable divider between the builder and the terminal dock. */
+  /* Draggable vertical divider between the builder and the terminal dock.
+     Overlaid on the dock's left edge so it works regardless of pane layout. */
   .termgrip {
-    flex: none;
-    height: 7px;
-    cursor: row-resize;
-    background: var(--panel);
-    border-bottom: 1px solid var(--border);
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -4px;
+    width: 9px;
+    z-index: 5;
+    cursor: col-resize;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -469,8 +482,8 @@
   }
   .termgrip::before {
     content: "";
-    width: 46px;
-    height: 3px;
+    width: 3px;
+    height: 46px;
     border-radius: 3px;
     background: var(--border);
   }
@@ -582,6 +595,26 @@
     .projbar, article { padding-left: 16px; padding-right: 16px; }
     .flag { grid-template-columns: 1fr; gap: 4px; }
     #termpanes { grid-template-columns: 1fr; }
+    /* Too narrow for a side-by-side split: stack the dock below instead. */
+    .main { flex-direction: column; }
+    #termview {
+      width: auto !important;
+      height: var(--term-h, 42vh);
+      min-width: 0;
+      min-height: 120px;
+      border-left: 0;
+      border-top: 2px solid var(--border);
+    }
+    .termgrip {
+      left: 0;
+      right: 0;
+      top: -4px;
+      bottom: auto;
+      width: auto;
+      height: 9px;
+      cursor: row-resize;
+    }
+    .termgrip::before { width: 46px; height: 3px; }
   }
 </style>
 </head>
@@ -593,6 +626,8 @@
     <button type="button" class="termtoggle" id="termtoggle" aria-pressed="false" title="Open an interactive split-screen terminal">⌗ Terminal</button>
   </div>
 </header>
+<!-- Builder and terminal sit side by side in this row. -->
+<div class="main">
 <div class="layout">
   <aside class="sidebar">
     <div class="search">
@@ -619,12 +654,12 @@
 </div>
 
 <!-- Interactive split-screen terminal workspace. Hidden until toggled; when
-     shown it docks beneath the command builder (both stay visible) and can be
-     resized by dragging the grip. Each pane is an independent shell (PTY)
-     served from /api/terminal, so you can run commands side by side and
+     shown it docks to the right of the command builder (both stay visible) and
+     can be resized by dragging the grip. Each pane is an independent shell
+     (PTY) served from /api/terminal, so you can run commands side by side and
      compare their output. -->
 <section id="termview" hidden aria-label="Terminal workspace">
-  <div class="termgrip" id="termgrip" role="separator" aria-orientation="horizontal" aria-label="Resize terminal" title="Drag to resize"></div>
+  <div class="termgrip" id="termgrip" role="separator" aria-orientation="vertical" aria-label="Resize terminal" title="Drag to resize"></div>
   <div class="termbar">
     <span class="termtitle">Terminals</span>
     <button type="button" class="tbtn" id="term-add" title="Open another shell (Ctrl+Shift+T)">＋ Split</button>
@@ -644,6 +679,7 @@
   </div>
   <div id="termpanes"></div>
 </section>
+</div>
 
 <div id="toast" role="status" aria-live="polite"></div>
 <div id="modal" class="modal" hidden><div class="dialog" id="dialog" role="dialog" aria-modal="true"></div></div>
@@ -2081,22 +2117,33 @@ for (const b of document.querySelectorAll(".colbtn")) {
   b.addEventListener("click", () => TermWorkspace.setCols(+b.dataset.cols));
 }
 
-// Drag the grip to resize the terminal dock. Each pane's ResizeObserver fits
-// its shell automatically as the height changes.
+// Drag the grip to resize the terminal dock. It sits to the right of the
+// builder (resize width); on narrow screens it stacks below (resize height).
+// Each pane's ResizeObserver re-fits its shell automatically as the size changes.
 (function () {
   const grip = document.getElementById("termgrip");
   const view = document.getElementById("termview");
-  if (!grip || !view) return;
+  const main = document.querySelector(".main");
+  if (!grip || !view || !main) return;
   grip.addEventListener("pointerdown", (e) => {
     e.preventDefault();
     try { grip.setPointerCapture(e.pointerId); } catch {}
-    const startY = e.clientY;
-    const startH = view.getBoundingClientRect().height;
+    const sideBySide = getComputedStyle(main).flexDirection === "row";
+    const rect = view.getBoundingClientRect();
+    const startX = e.clientX, startY = e.clientY;
+    const startW = rect.width, startH = rect.height;
     const onMove = (ev) => {
-      const dy = startY - ev.clientY;            // drag up → taller
-      const max = window.innerHeight - 140;      // leave room for the builder
-      const h = Math.max(120, Math.min(max, startH + dy));
-      view.style.height = h + "px";
+      if (sideBySide) {
+        const dx = startX - ev.clientX;          // drag left → wider
+        const max = window.innerWidth - 320;     // leave room for the builder
+        view.style.height = "";
+        view.style.width = Math.max(220, Math.min(max, startW + dx)) + "px";
+      } else {
+        const dy = startY - ev.clientY;          // drag up → taller
+        const max = window.innerHeight - 160;
+        view.style.width = "";
+        view.style.height = Math.max(120, Math.min(max, startH + dy)) + "px";
+      }
     };
     const onUp = () => {
       try { grip.releasePointerCapture(e.pointerId); } catch {}
