@@ -455,6 +455,97 @@
   .termtoggle:hover { opacity: 1; background: rgba(255, 255, 255, 0.12); }
   .termtoggle[aria-pressed="true"] { background: #fff; color: var(--banner); border-color: #fff; opacity: 1; }
 
+  /* ── profile menu (top-right) ───────────────────────────────────────── */
+  .profile { position: relative; }
+  .avatar {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 3px 10px 3px 4px;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 999px;
+    background: transparent; color: #fff; cursor: pointer;
+    font: 700 13px/1.2 var(--sans); opacity: 0.9;
+  }
+  .avatar:hover { opacity: 1; background: rgba(255, 255, 255, 0.12); }
+  .avatar .disc {
+    width: 24px; height: 24px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: rgba(255, 255, 255, 0.92); color: var(--banner);
+    font: 800 12px/1 var(--mono); text-transform: uppercase;
+  }
+  .avatar .caret { font-size: 10px; opacity: 0.8; }
+  .menu {
+    position: absolute; top: calc(100% + 8px); right: 0; z-index: 60;
+    min-width: 214px;
+    background: var(--panel); color: var(--fg);
+    border: 1px solid var(--border); border-radius: 10px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+    padding: 6px; display: none;
+  }
+  .menu.open { display: block; }
+  .menu .who {
+    padding: 8px 10px 10px; border-bottom: 1px solid var(--border); margin-bottom: 6px;
+  }
+  .menu .who .lbl { font: 600 10.5px/1 var(--mono); letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--dim); }
+  .menu .who .nm { font: 700 15px/1.3 var(--sans); color: var(--fg-strong);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .menu button {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    padding: 9px 10px; border: 0; border-radius: 7px;
+    background: transparent; color: var(--fg); cursor: pointer;
+    font: 500 14px/1 var(--sans); text-align: left;
+  }
+  .menu button:hover { background: var(--hover); }
+  .menu button .ic { width: 16px; text-align: center; color: var(--dim); font-size: 14px; }
+  .menu button.danger { color: var(--danger); }
+  .menu button.danger .ic { color: var(--danger); }
+
+  /* ── modal (profile settings) ───────────────────────────────────────── */
+  .modal-back {
+    position: fixed; inset: 0; z-index: 100;
+    background: rgba(10, 11, 18, 0.62);
+    display: none; align-items: center; justify-content: center; padding: 20px;
+  }
+  .modal-back.open { display: flex; }
+  .modal {
+    width: 100%; max-width: 380px;
+    background: var(--panel); color: var(--fg);
+    border: 1px solid var(--border); border-radius: 14px;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+    padding: 22px;
+  }
+  .modal h2 { margin: 0 0 2px; font: 800 20px/1.2 var(--sans); color: var(--fg-strong); }
+  .modal .msub { margin: 0 0 18px; color: var(--dim); font-size: 13.5px; }
+  .modal label { display: block; font: 600 11px/1 var(--mono); letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--dim); margin: 0 0 7px; }
+  .modal .mfield { margin-bottom: 15px; }
+  .modal input {
+    width: 100%; padding: 11px 12px;
+    border: 1px solid var(--border); border-radius: 9px;
+    background: var(--code-bg); color: var(--fg-strong);
+    font: 14px var(--mono); outline: 0;
+  }
+  .modal input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--sel); }
+  .mnote {
+    display: none; margin-bottom: 14px; padding: 9px 11px; border-radius: 8px;
+    font: 12.5px/1.4 var(--mono);
+  }
+  .mnote.err { display: block; border: 1px solid var(--danger); color: var(--danger);
+    background: rgba(247, 118, 142, 0.08); }
+  .mnote.ok { display: block; border: 1px solid var(--ok); color: var(--ok);
+    background: rgba(158, 206, 106, 0.1); }
+  .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 6px; }
+  .mbtn {
+    padding: 10px 16px; border-radius: 9px; cursor: pointer;
+    font: 700 13.5px/1 var(--sans); border: 1px solid var(--border);
+    background: transparent; color: var(--fg);
+  }
+  .mbtn:hover { background: var(--hover); }
+  .mbtn.primary { border-color: transparent; color: #0e1018;
+    background: linear-gradient(100deg, var(--accent), var(--accent-soft)); }
+  .mbtn.primary:hover { filter: brightness(1.06); }
+  .mbtn:disabled { opacity: 0.6; cursor: default; }
+
   /* ── terminal workspace ───────────────────────────────────────────────── */
   /* The terminal docks to the right of the command builder rather than
      replacing it, so both are usable at once. #termview keeps a fixed
@@ -726,8 +817,50 @@
   <div class="bannerright">
     <span class="keys"><kbd>/</kbd> filter · <kbd>j</kbd>/<kbd>k</kbd> move · <kbd>y</kbd> copy · <kbd>enter</kbd> run</span>
     <button type="button" class="termtoggle" id="termtoggle" aria-pressed="false" title="Open an interactive split-screen terminal">⌗ Terminal</button>
+    <div class="profile" id="profile">
+      <button type="button" class="avatar" id="avatar" aria-haspopup="true" aria-expanded="false" title="Account">
+        <span class="disc" id="avatarDisc">?</span>
+        <span id="avatarName">operator</span>
+        <span class="caret">▾</span>
+      </button>
+      <div class="menu" id="profileMenu" role="menu">
+        <div class="who">
+          <div class="lbl">Signed in as</div>
+          <div class="nm" id="menuName">operator</div>
+        </div>
+        <button type="button" id="openSettings" role="menuitem"><span class="ic">⚙</span> Profile settings</button>
+        <button type="button" class="danger" id="logoutBtn" role="menuitem"><span class="ic">⏻</span> Sign out</button>
+      </div>
+    </div>
   </div>
 </header>
+
+<!-- Profile settings modal: change the local account passphrase. -->
+<div class="modal-back" id="settingsBack">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+    <h2 id="settingsTitle">Profile settings</h2>
+    <p class="msub">Signed in as <strong id="settingsWho">operator</strong> · local account on 127.0.0.1</p>
+    <form id="settingsForm">
+      <div class="mnote" id="settingsNote"></div>
+      <div class="mfield">
+        <label for="curPass">Current passphrase</label>
+        <input id="curPass" type="password" autocomplete="current-password" placeholder="••••••••" required>
+      </div>
+      <div class="mfield">
+        <label for="newPass">New passphrase</label>
+        <input id="newPass" type="password" autocomplete="new-password" placeholder="at least 6 characters" required>
+      </div>
+      <div class="mfield">
+        <label for="newPass2">Confirm new passphrase</label>
+        <input id="newPass2" type="password" autocomplete="new-password" placeholder="repeat it" required>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="mbtn" id="settingsCancel">Cancel</button>
+        <button type="submit" class="mbtn primary" id="settingsSave">Update passphrase</button>
+      </div>
+    </form>
+  </div>
+</div>
 <!-- Builder and terminal sit side by side in this row. -->
 <div class="main">
 <div class="layout">
@@ -3145,6 +3278,106 @@ window.addEventListener("hashchange", () => {
   const t = h.slug && bySlug.get(h.slug);
   if (t && t !== current) select(t);
 });
+</script>
+
+<script>
+/* Account menu: fill the operator name from /api/whoami, toggle the dropdown,
+   sign out, and drive the profile-settings (change-passphrase) modal. */
+(function () {
+  const avatar = document.getElementById('avatar');
+  const menu = document.getElementById('profileMenu');
+  const disc = document.getElementById('avatarDisc');
+  const nameEl = document.getElementById('avatarName');
+  const menuName = document.getElementById('menuName');
+  const settingsWho = document.getElementById('settingsWho');
+
+  function setUser(name) {
+    const n = name || 'operator';
+    nameEl.textContent = n;
+    menuName.textContent = n;
+    settingsWho.textContent = n;
+    disc.textContent = n.slice(0, 1).toUpperCase() || '?';
+  }
+  fetch('/api/whoami', { headers: { 'Accept': 'application/json' } })
+    .then(r => r.ok ? r.json() : null)
+    .then(d => { if (d && d.user) setUser(d.user); })
+    .catch(() => {});
+
+  function openMenu(open) {
+    menu.classList.toggle('open', open);
+    avatar.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  avatar.addEventListener('click', (e) => { e.stopPropagation(); openMenu(!menu.classList.contains('open')); });
+  document.addEventListener('click', (e) => {
+    if (!document.getElementById('profile').contains(e.target)) openMenu(false);
+  });
+
+  document.getElementById('logoutBtn').addEventListener('click', async () => {
+    try {
+      await fetch('/api/logout', { method: 'POST', headers: { 'Origin': location.origin } });
+    } catch (_) {}
+    window.location.href = '/login';
+  });
+
+  // ── settings modal ──
+  const back = document.getElementById('settingsBack');
+  const form = document.getElementById('settingsForm');
+  const note = document.getElementById('settingsNote');
+  const save = document.getElementById('settingsSave');
+  const cur = document.getElementById('curPass');
+  const np = document.getElementById('newPass');
+  const np2 = document.getElementById('newPass2');
+
+  function showNote(cls, text) { note.className = 'mnote ' + cls; note.textContent = text; }
+  function clearNote() { note.className = 'mnote'; note.textContent = ''; }
+
+  function openModal() {
+    openMenu(false);
+    clearNote();
+    form.reset();
+    save.disabled = false;
+    save.textContent = 'Update passphrase';
+    back.classList.add('open');
+    setTimeout(() => cur.focus(), 30);
+  }
+  function closeModal() { back.classList.remove('open'); }
+
+  document.getElementById('openSettings').addEventListener('click', openModal);
+  document.getElementById('settingsCancel').addEventListener('click', closeModal);
+  back.addEventListener('click', (e) => { if (e.target === back) closeModal(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && back.classList.contains('open')) closeModal();
+  });
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearNote();
+    if (np.value.length < 6) { showNote('err', 'new passphrase must be at least 6 characters'); return; }
+    if (np.value !== np2.value) { showNote('err', 'new passphrases do not match'); return; }
+    save.disabled = true;
+    save.textContent = 'Saving…';
+    try {
+      const res = await fetch('/api/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Origin': location.origin },
+        body: JSON.stringify({ current: cur.value, new: np.value }),
+      });
+      if (res.ok) {
+        showNote('ok', 'Passphrase updated.');
+        form.reset();
+        setTimeout(closeModal, 900);
+      } else {
+        const d = await res.json().catch(() => ({}));
+        showNote('err', d.error || 'could not update passphrase');
+      }
+    } catch (_) {
+      showNote('err', 'could not reach the server');
+    } finally {
+      save.disabled = false;
+      save.textContent = 'Update passphrase';
+    }
+  });
+})();
 </script>
 </body>
 </html>

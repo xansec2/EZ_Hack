@@ -30,6 +30,12 @@ const (
 //go:embed webui/index.html
 var indexHTML string
 
+//go:embed webui/login.html
+var loginHTML string
+
+//go:embed webui/register.html
+var registerHTML string
+
 // The server serves several catalogs ("modes"): the web pentest catalog, the
 // Active Directory catalog, and the Linux local-privilege-escalation catalog.
 // All modes share one project store, so an engagement and its scope are visible
@@ -83,15 +89,46 @@ func runWeb(port int, open bool) error {
 		return err
 	}
 
+	// The login/register pages share index.html's TITLE substitution.
+	loginPage := renderAuthPage(loginHTML)
+	registerPage := renderAuthPage(registerHTML)
+
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /{$}", requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
 		w.Write(page)
+	}))
+
+	// Auth gate: the sign-in / create-account pages and their APIs. An already
+	// signed-in browser visiting these pages is bounced back to the app.
+	mux.HandleFunc("GET /login", func(w http.ResponseWriter, r *http.Request) {
+		if sessionUser(r) != "" {
+			http.Redirect(w, r, "/", http.StatusSeeOther)
+			return
+		}
+		serveAuthPage(w, loginPage)
+	})
+	mux.HandleFunc("GET /register", func(w http.ResponseWriter, r *http.Request) {
+		if sessionUser(r) != "" {
+			http.Redirect(w, r, "/", http.StatusSeeOther)
+			return
+		}
+		serveAuthPage(w, registerPage)
+	})
+	mux.HandleFunc("POST /api/login", handleLogin)
+	mux.HandleFunc("POST /api/register", handleRegister)
+	mux.HandleFunc("POST /api/profile", requireAuth(handleProfile))
+	mux.HandleFunc("POST /api/logout", handleLogout)
+	mux.HandleFunc("GET /api/logout", handleLogout)
+	mux.HandleFunc("GET /api/whoami", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		json.NewEncoder(w).Encode(map[string]string{"user": sessionUser(r)})
 	})
 	// Live refresh of the shared project list. The mode param is accepted (and
 	// validated) for backward compatibility, but the list is the same for all.
-	mux.HandleFunc("GET /api/projects", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /api/projects", requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		if !sameOrigin(r) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
@@ -109,12 +146,12 @@ func runWeb(port int, open bool) error {
 			projects = []Project{}
 		}
 		json.NewEncoder(w).Encode(projects)
-	})
-	mux.HandleFunc("POST /api/projects", handleProjects)
-	mux.HandleFunc("POST /api/run", handleRun)
+	}))
+	mux.HandleFunc("POST /api/projects", requireAuth(handleProjects))
+	mux.HandleFunc("POST /api/run", requireAuth(handleRun))
 	// Interactive shell(s) for the split-screen terminal workspace. Each socket
 	// is one PTY-backed shell; the page opens one per pane.
-	mux.HandleFunc("GET /api/terminal", handleTerminal)
+	mux.HandleFunc("GET /api/terminal", requireAuth(handleTerminal))
 
 	url := fmt.Sprintf("http://localhost:%d/", port)
 	fmt.Printf("%s → %s   (ctrl+c to stop)\n", webTitle, url)
@@ -153,6 +190,18 @@ func buildPage() ([]byte, error) {
 	}
 	r := strings.NewReplacer("{{TITLE}}", html.EscapeString(webTitle), "{{CONFIG}}", string(cfg))
 	return []byte(r.Replace(indexHTML)), nil
+}
+
+// renderAuthPage fills the login/register template's {{TITLE}} once at startup.
+func renderAuthPage(tmpl string) []byte {
+	return []byte(strings.ReplaceAll(tmpl, "{{TITLE}}", html.EscapeString(webTitle)))
+}
+
+// serveAuthPage writes a prebuilt auth page with no-store caching.
+func serveAuthPage(w http.ResponseWriter, page []byte) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Write(page)
 }
 
 // projReq is the body the page POSTs to /api/projects to mutate the project
