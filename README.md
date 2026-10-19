@@ -53,6 +53,7 @@ Each mode keeps its **own** project list, stored in the same file its standalone
 TUI uses — web mode shares `…/web/projects.json`, AD mode shares
 `…/active-directory/projects.json` — so projects created in either TUI show up
 in the matching browser mode and vice-versa.
+<img width="1573" height="1072" alt="image" src="https://github.com/user-attachments/assets/a55ccc5d-6aea-4e17-be1a-83f1c59f6321" />
 
 A few things to know:
 
