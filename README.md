@@ -113,6 +113,7 @@ A few things to know:
   It handles colours, carriage-return progress bars, cursor moves, and the
   alternate-screen buffer; heavy full-screen TUIs (e.g. `vim`, `htop`) mostly
   work but aren't pixel-perfect.
+<img width="1577" height="1081" alt="image" src="https://github.com/user-attachments/assets/42fe3ddf-5f46-41ad-9c09-20121e29e027" />
 
 ### Application Map (Obsidian-style canvas)
 
