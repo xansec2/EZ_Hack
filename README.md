@@ -8,6 +8,7 @@ is split into three bordered panels:
 - **Tool picker / configurator** (bottom-left, 2/3 height) — pick a tool and
   toggle its flags while the command builds live.
 - **Output** (right half) — streams the command's output when you run it.
+<img width="1573" height="1068" alt="image" src="https://github.com/user-attachments/assets/252dfa25-cdc4-487d-9879-ccefe1ed653a" />
 
 Select a project first; its in-scope targets then auto-fill the tool's URL/host
 flag (and the out-of-scope list blocks any command that would touch it).
