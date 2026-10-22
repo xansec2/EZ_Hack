@@ -1,7 +1,20 @@
 # Quiver
 
-An interactive terminal UI for assembling pentest tool command lines. The screen
-is split into three bordered panels:
+**Quiver** is a command console for offensive-security work: a curated catalog of
+pentest and bug-bounty tools whose command lines you assemble by picking a tool,
+toggling its flags, and watching the command build live — then copy it into your
+proxy or run it in place. It runs two ways from one Go codebase:
+
+- a **terminal UI** (TUI) built with [Bubble Tea](https://github.com/charmbracelet/bubbletea), and
+- a **browser app** (`--web`) with split-screen live terminals and an
+  engagement map, behind a local account gate.
+
+Every command is scoped to a target you define, and **nothing executes unless
+you ask it to** — `ctrl+r` in the TUI, the **Run** button in the browser.
+
+## The TUI
+
+The screen is split into three bordered panels:
 
 - **Project picker** (top-left, 1/3 height) — define the target you're hunting:
   its in-scope URLs/hosts and the things to keep out of scope.
@@ -12,9 +25,8 @@ is split into three bordered panels:
 Select a project first; its in-scope targets then auto-fill the tool's URL/host
 flag (and the out-of-scope list blocks any command that would touch it).
 **Nothing is executed unless you explicitly press `ctrl+r`.**
-<img width="1582" height="1061" alt="image" src="https://github.com/user-attachments/assets/61616758-e9d3-4a9c-81d1-40b17b370cbf" />
 
-Built with [Bubble Tea](https://github.com/charmbracelet/bubbletea).
+<img width="1582" height="1061" alt="Quiver TUI" src="https://github.com/user-attachments/assets/61616758-e9d3-4a9c-81d1-40b17b370cbf" />
 
 ## Browser view
 
@@ -33,40 +45,66 @@ and watch the command assemble live. **Copy** puts it on your clipboard, and
 stdout/stderr into the output console just like `ctrl+r` in the TUI. Each tool
 has its own link (e.g. `http://localhost:7702/#web/subfinder`).
 
-### Two catalogs: web ↔ AD
+### Accounts (web view)
 
-The browser view bundles **two** catalogs and a toggle in the top-left to switch
+The browser view sits behind a **local account gate** (`auth.go`): a sign-in /
+registration page, an opaque `HttpOnly` session cookie (7-day TTL), and a
+profile menu to sign out. Passwords are never stored in the clear — they're
+salted and stretched with PBKDF2-HMAC-SHA256 using only the standard library.
+
+This is a convenience lock for the localhost UI, **not** a hardened
+multi-tenant auth system — the server already binds to `127.0.0.1` and rejects
+cross-origin requests. The gate keeps the console (which can run commands on the
+host) from being opened by anyone who merely reaches the port.
+
+### The catalogs
+
+The browser view bundles several catalogs and a toggle in the top-left to switch
 between them:
 
+- **setup** — engagement-setup helpers (/etc/hosts, a fully-knobbed nmap).
+- **Footprinting** — per-service enumeration one-liners (DNS, FTP, SMB/RPC, NFS,
+  SMTP, IMAP/POP3, SNMP, SSH, MySQL, MSSQL, Oracle TNS, IPMI, RDP, WinRM, WMI,
+  R-Services, RSYNC) plus crt.sh/Shodan OSINT, built from the HTBNotes vault's
+  Service Enumeration notes (`footprinting_catalog.go`).
 - **web** — the bug-bounty / web-recon tools and payloads documented below.
 - **AD** — the Active Directory tooling from the sibling `active-directory` app
   (netexec, BloodHound, Kerberos attacks, impacket, ACL/delegation/shadow-cred
   privilege escalation, Certipy, coercion/relay, …).
+- **Linux** / **Reverse Shells** — local-privesc enumeration and the reverse-shell
+  payload builder.
+- **File Transfers** — move files on/off a box: attacker HTTP/upload/SMB/WebDAV
+  servers, Linux & Windows download cradles (wget/curl, WebClient, certutil,
+  bitsadmin), uploads, netcat, and base64/openssl encoding, built from the
+  vault's File Transfers notes (`filetransfer_catalog.go`).
 
-Click **web** or **AD** to switch; each remembers its own selected tool, filter,
-and active project, and the URL carries the mode (`#ad/netexec`) so links and
+Click a catalog to switch; each remembers its own selected tool, filter, and
+active project, and the URL carries the mode (`#ad/netexec`) so links and
 reloads land in the right place. The AD catalog itself still lives in the
 standalone `active-directory` TUI — here it's served read-only from a baked-in
 copy (`ad_catalog.go`), so re-copy that file if the AD catalog changes.
 
-Each mode keeps its **own** project list, stored in the same file its standalone
-TUI uses — web mode shares `…/web/projects.json`, AD mode shares
-`…/active-directory/projects.json` — so projects created in either TUI show up
-in the matching browser mode and vice-versa.
-<img width="1573" height="1072" alt="image" src="https://github.com/user-attachments/assets/a55ccc5d-6aea-4e17-be1a-83f1c59f6321" />
+Projects are **shared** across modes: the list lives in one file
+(`…/pentest-suite/projects.json`) that both the TUI and every browser mode read
+and write, so a project created anywhere shows up everywhere. (Older per-mode
+lists — `web`, `active-directory`, `linux`, `setup` — are picked up and merged
+automatically.)
+
+<img width="1573" height="1072" alt="Quiver browser view" src="https://github.com/user-attachments/assets/a55ccc5d-6aea-4e17-be1a-83f1c59f6321" />
 
 A few things to know:
 
 - **It runs real commands on this machine.** The server binds to `127.0.0.1`
   only and rejects cross-origin requests, but anything that can reach the port
-  can run the catalog's tools. Only run it on a machine you control.
+  (and clears the account gate) can run the catalog's tools. Only run it on a
+  machine you control.
 - **Scope still applies.** The active project's out-of-scope list is enforced
   server-side before anything runs — the same block as `ctrl+r`, per mode.
 - **Projects are editable here too.** Use **＋ New** to create a project,
   **✎ Scope** to add/remove its in- and out-of-scope entries, and **🗑 Delete**
-  to remove it. Changes write straight to the active mode's `projects.json`; the
+  to remove it. Changes write straight to the shared `projects.json`; the
   **↻** button reloads it if you've also been editing in a TUI.
-- The page is `webui/index.html`, embedded in the binary with both catalogs
+- The page is `webui/index.html`, embedded in the binary with the catalogs
   baked in at build time, so rebuild after editing `catalog.go` / `ad_catalog.go`
   (`run.sh` always rebuilds).
 
@@ -84,7 +122,7 @@ A few things to know:
 The command builder's **Run** is one-shot: it assembles a catalog command and
 streams its output back, with no way to type into the running process. For
 anything that wants a real shell — responding to a prompt, chaining ad-hoc
-commands, poking at a target interactively — there's now a full terminal.
+commands, poking at a target interactively — there's a full terminal.
 
 Click **⌗ Terminal** in the top-right to open the terminal workspace (it takes
 over the catalog view; click it again, or **✕ Close**, to go back). Each pane is
@@ -106,14 +144,15 @@ A few things to know:
 - **These are unrestricted shells**, not catalog commands — the project
   out-of-scope block does **not** apply to what you type here (it can't know your
   intent the way it can with an assembled command). Same trust model as the rest
-  of the app: localhost-only, same-origin-checked, your machine.
+  of the app: localhost-only, same-origin-checked, account-gated, your machine.
 - The terminal is **Linux-only** (it needs a PTY; see `run.sh`). On other
   platforms the pane opens and says so rather than failing silently.
 - The emulator is a compact, built-in one (no `xterm.js`, so it works offline).
   It handles colours, carriage-return progress bars, cursor moves, and the
   alternate-screen buffer; heavy full-screen TUIs (e.g. `vim`, `htop`) mostly
   work but aren't pixel-perfect.
-<img width="1577" height="1081" alt="image" src="https://github.com/user-attachments/assets/42fe3ddf-5f46-41ad-9c09-20121e29e027" />
+
+<img width="1577" height="1081" alt="Quiver split-screen terminals" src="https://github.com/user-attachments/assets/42fe3ddf-5f46-41ad-9c09-20121e29e027" />
 
 ### Application Map (Obsidian-style canvas)
 
@@ -281,22 +320,28 @@ paste into your proxy (quotes and all), with no wrapper to strip.
 ## Build & run
 
 Go 1.27+ is required. This repo was set up with Go installed to `~/go-sdk/go`,
-so either run `source ~/.bashrc` (adds it to PATH) or call it directly:
+so either run `source ~/.bashrc` (adds it to PATH) or let `run.sh` find it:
 
 ```bash
-cd ~/Desktop/bug-bounty-tool
-go build -o bug-bounty-tool .
-./bug-bounty-tool
+cd ~/Desktop/web
+go build -o web .     # pure-Go build; CGO is off (see run.sh)
+./web                 # launch the TUI
 ```
 
-Or just `./run.sh`.
+Or just `./run.sh` (TUI) / `./run.sh --web` (browser) — it always rebuilds, puts
+your Go-installed tools on PATH, and launches.
+
+To install it system-wide (binary at `/opt/pentest-tui`, launcher `web` on every
+user's PATH), run `sudo ./install.sh` from inside the app directory
+(`--build` to rebuild from source first).
 
 ## Projects & scope
 
 A project is a hunting target: a name, a list of **in-scope** URLs/hosts, and a
-list of **out-of-scope** entries. Projects persist between runs in
-`$XDG_CONFIG_HOME/bug-bounty-tool/projects.json` (usually
-`~/.config/bug-bounty-tool/projects.json`).
+list of **out-of-scope** entries. Projects persist between runs in a single
+shared file, `…/pentest-suite/projects.json` under your OS config dir (e.g.
+`~/.config/pentest-suite/projects.json` on Linux), read and written by both the
+TUI and every browser mode.
 
 - Press `ctrl+p` from anywhere to jump to the project panel.
 - `n` creates a project, `s` edits its scope, `enter` makes it the active one.
@@ -363,16 +408,29 @@ command.
 | `tool.go` | `Tool`/`Flag` types + command assembly and shell quoting |
 | `catalog.go` | the built-in web tool definitions |
 | `ad_catalog.go` | the Active Directory catalog (baked-in copy of the `active-directory` app's), served as the browser's **AD** mode |
+| `footprinting_catalog.go` | per-service enumeration one-liners (**Footprinting** mode) |
+| `filetransfer_catalog.go` | file-transfer servers, cradles, and encoders (**File Transfers** mode) |
+| `linux_catalog.go` | Linux local-privesc enumeration (**Linux** mode) |
+| `revshell_catalog.go` | the reverse-shell payload builder (**Reverse Shells** mode) |
+| `setup_catalog.go` | engagement-setup helpers (**setup** mode) |
 | `payloads.go` | the detection-probe payload library (appended into the catalog) |
 | `model.go` | Bubble Tea model, update loop, and three-panel rendering |
 | `project.go` | project/scope picker: state, persistence, and scope wiring |
 | `run.go` | streams a running command's output into the right panel |
 | `wordlists.go` | resolves the bundled SecLists paths |
 | `web.go` | `--web` server: serves the catalog, runs commands, manages projects, enforces scope |
+| `auth.go` | the web view's local account gate (registration, login, sessions) |
+| `terminal.go` / `ws.go` / `pty_linux.go` / `pty_other.go` | the split-screen browser terminals and their PTY backing |
+| `license.go` | licensing / entitlement checks |
 | `webui/index.html` | the browser view (embedded in the binary) |
+| `webui/login.html` / `webui/register.html` | the account-gate pages |
 | `main.go` | entrypoint; `--web` flag; prints the last assembled command on quit |
 
 ## Safety
 
-This tool builds commands and, only when you press `ctrl+r`, runs them in the
-output panel. Run them only against systems you are authorized to test.
+Quiver builds commands and, only when you explicitly run them (`ctrl+r` in the
+TUI, **Run** in the browser), executes them on the machine serving the app. The
+browser view is localhost-only, same-origin-checked, and behind an account gate;
+the scope block refuses any assembled command that would touch an out-of-scope
+target. Run it, and the tools it drives, only against systems you are authorized
+to test.
