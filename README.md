@@ -1,5 +1,7 @@
 # Quiver
 
+<img width="1761" height="1061" alt="image" src="https://github.com/user-attachments/assets/fd138a3d-7ba3-406f-8205-4bfcc0788af1" />
+
 **Quiver** is a command console for offensive-security work: a curated catalog of
 pentest and bug-bounty tools whose command lines you assemble by picking a tool,
 toggling its flags, and watching the command build live — then copy it into your
@@ -26,7 +28,7 @@ Select a project first; its in-scope targets then auto-fill the tool's URL/host
 flag (and the out-of-scope list blocks any command that would touch it).
 **Nothing is executed unless you explicitly press `ctrl+r`.**
 
-<img width="1582" height="1061" alt="Quiver TUI" src="https://github.com/user-attachments/assets/61616758-e9d3-4a9c-81d1-40b17b370cbf" />
+
 
 ## Browser view
 
@@ -155,6 +157,8 @@ A few things to know:
 <img width="1577" height="1081" alt="Quiver split-screen terminals" src="https://github.com/user-attachments/assets/42fe3ddf-5f46-41ad-9c09-20121e29e027" />
 
 ### Application Map (Obsidian-style canvas)
+
+<img width="1777" height="1077" alt="image" src="https://github.com/user-attachments/assets/e01f32a7-16d9-442e-813e-9323bd3fd9a1" />
 
 The **Application Map** tab (top-left toggle, alongside web / AD / Linux / …)
 draws a per-project, Obsidian-style canvas of the whole engagement and **builds
