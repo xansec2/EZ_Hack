@@ -1,4 +1,4 @@
-# EZ_Hack
+# Quiver
 
 An interactive terminal UI for assembling pentest tool command lines. The screen
 is split into three bordered panels:
